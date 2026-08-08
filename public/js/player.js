@@ -167,6 +167,7 @@ export function close() {
   dom.root.hidden = true;
   dom.upnext.hidden = true;
   document.body.classList.remove('is-playing');
+  setFaux(false);
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   session.active = false;
   session.title = null;
@@ -434,7 +435,7 @@ function renderChrome() {
   dom.btnBack.title = `Back ${seekStep()} seconds (← or double-click the left of the picture)`;
   dom.btnFwd.title = `Forward ${seekStep()} seconds (→ or double-click the right of the picture)`;
   dom.btnPlay.innerHTML = dom.video.paused ? ICONS.play : ICONS.pause;
-  dom.btnFull.innerHTML = document.fullscreenElement ? ICONS.exitFull : ICONS.full;
+  dom.btnFull.innerHTML = document.fullscreenElement || faux() ? ICONS.exitFull : ICONS.full;
   updateVolumeIcon();
 
   const next = session.queue[session.queueIndex + 1];
@@ -680,14 +681,59 @@ function updateVolumeIcon() {
   dom.btnMute.innerHTML = v === 0 ? ICONS.volMute : v < 0.5 ? ICONS.volLow : ICONS.volHigh;
 }
 
+/**
+ * Go fullscreen by whatever route this browser actually allows.
+ *
+ * 1. The standard Fullscreen API on the player container — keeps our controls.
+ * 2. iOS Safari cannot fullscreen a <div> at all, only a <video>, so fall back
+ *    to the native video presentation there.
+ * 3. Embedded in an iframe without allow="fullscreen" (or anywhere else the
+ *    request is refused), expand to fill the viewport with CSS instead.
+ */
+function faux() {
+  return dom.root.classList.contains('is-faux-fullscreen');
+}
+
+function setFaux(on) {
+  dom.root.classList.toggle('is-faux-fullscreen', on);
+  document.body.classList.toggle('is-faux-fullscreen', on);
+  dom.btnFull.innerHTML = on ? ICONS.exitFull : ICONS.full;
+}
+
 async function toggleFullscreen() {
-  try {
-    if (document.fullscreenElement) await document.exitFullscreen();
-    else await dom.root.requestFullscreen({ navigationUI: 'hide' });
-  } catch {
-    flash('Fullscreen was refused by the browser');
+  // Leaving, by whichever route we entered.
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    try {
+      await (document.exitFullscreen?.() ?? document.webkitExitFullscreen?.());
+    } catch { /* already gone */ }
+    setFaux(false);
+    return;
   }
-  dom.btnFull.innerHTML = document.fullscreenElement ? ICONS.exitFull : ICONS.full;
+  if (faux()) {
+    setFaux(false);
+    return;
+  }
+
+  const request = dom.root.requestFullscreen || dom.root.webkitRequestFullscreen;
+  if (request) {
+    try {
+      await request.call(dom.root, { navigationUI: 'hide' });
+      setFaux(false);
+      dom.btnFull.innerHTML = ICONS.exitFull;
+      return;
+    } catch { /* refused — fall through */ }
+  }
+
+  // iOS: only the video element can present fullscreen.
+  if (typeof dom.video.webkitEnterFullscreen === 'function') {
+    try {
+      dom.video.webkitEnterFullscreen();
+      return;
+    } catch { /* fall through */ }
+  }
+
+  setFaux(true);
+  flash('Filling the window — this page cannot use the browser\'s fullscreen');
 }
 
 async function togglePip() {
@@ -1112,9 +1158,12 @@ function bindEvents() {
     loadSource(next, video.currentTime);
   });
 
-  document.addEventListener('fullscreenchange', () => {
-    dom.btnFull.innerHTML = document.fullscreenElement ? ICONS.exitFull : ICONS.full;
-  });
+  for (const evt of ['fullscreenchange', 'webkitfullscreenchange']) {
+    document.addEventListener(evt, () => {
+      const on = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+      dom.btnFull.innerHTML = on || faux() ? ICONS.exitFull : ICONS.full;
+    });
+  }
 
   // --- scrubbing ------------------------------------------------------------
   dom.scrubInput.addEventListener('input', () => {
@@ -1209,7 +1258,7 @@ function onKeydown(event) {
     case '[': applySubtitleOffset((session.subOffset || 0) - 0.25); break;
     case ']': applySubtitleOffset((session.subOffset || 0) + 0.25); break;
     case 'Escape':
-      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      if (document.fullscreenElement || faux()) toggleFullscreen();
       else close();
       break;
     case '>': video.playbackRate = Math.min(4, video.playbackRate + 0.25); flash(`Speed ${video.playbackRate}×`); break;

@@ -82,8 +82,16 @@ next one automatically and tells you why.
   frames, buffer ahead, average bitrate, and whether you're watching an offline copy.
   The frame rate comes from `requestVideoFrameCallback`, so it's what the browser is
   really painting, not a number copied out of a file header.
-- Subtitles, playback speed, picture-in-picture, fullscreen, resume-where-you-left-off,
-  and autoplay of the next episode with a countdown.
+- **Fullscreen that always does something.** The standard API first; on iOS, where a
+  `<div>` cannot go fullscreen at all, the native video presentation; and if the page is
+  embedded somewhere that refuses the request, it fills the window with CSS instead of
+  dead-ending.
+- Playback speed, picture-in-picture, resume-where-you-left-off, and autoplay of the next
+  episode with a countdown.
+
+**There is no resolution ceiling.** Elbi plays the file you give it, so 4K plays as 4K —
+the quality menu just lists whichever files a title actually has. Give one title a 4K
+remux, a 1080p copy and a 720p copy and all three appear, highest first.
 
 **Keyboard**
 
@@ -352,7 +360,9 @@ switched off.
 ## Answers to the obvious questions
 
 **Can I use it on my TV or phone?** Yes — it's a website, so anything with a browser
-works. Add it to your home screen and it runs as a standalone app.
+works. Add it to your home screen and it runs as a standalone app. The layout is built for
+phone portrait as well as landscape; the player keeps its controls on a single row down to
+360px wide.
 
 **Where do my files go?** Uploads land in `media/uploads/`. Scanned files stay exactly
 where they are.

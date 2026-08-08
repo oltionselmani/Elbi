@@ -370,6 +370,15 @@ dl { margin: 0; }
 
 /* ── Player ───────────────────────────────────────────────────────────── */
 .player { position: fixed; inset: 0; z-index: 70; background: #000; }
+/* Used when the Fullscreen API is unavailable or refused — inside an iframe,
+   or on iOS where a <div> cannot go fullscreen at all. The player already
+   covers the viewport, so this mainly hides the page behind it and marks the
+   state for the button icon. */
+.player.is-faux-fullscreen {
+  position: fixed; inset: 0; width: 100%; height: 100%;
+  z-index: 2147483647; background: #000;
+}
+body.is-faux-fullscreen { overflow: hidden; }
 .player video { width: 100%; height: 100%; object-fit: contain; background: #000; }
 .player.is-idle { cursor: none; }
 .player.is-idle .player__ui { opacity: 0; pointer-events: none; }
@@ -523,10 +532,27 @@ dl { margin: 0; }
   .search { padding: .25rem .5rem; }
   #addBtn { padding: .42rem .55rem; }
   .avatar { width: 30px; height: 30px; }
-  .controls { gap: .1rem; }
-  .time { font-size: .74rem; }
-  .volume input[type="range"] { display: none; }
+
+  /* The control bar must stay on ONE row — wrapping to two looks broken.
+     Volume goes first: phones have hardware buttons for it. */
+  .controls { gap: 0; flex-wrap: nowrap; }
+  .controls .iconbtn { padding: .38rem .3rem; }
+  .volume { display: none; }
+  .time { font-size: .72rem; margin-left: .2rem; }
+  .chiplabel { font-size: .7rem; }
+  .player__bottom { padding: .3rem .6rem calc(.6rem + env(safe-area-inset-bottom)); }
+  .player__top { padding: calc(.7rem + env(safe-area-inset-top)) .6rem .7rem; }
   .player__titles strong { font-size: .92rem; }
+  .player__titles span { font-size: .74rem; }
+  .menu__panel { min-width: 190px; max-height: 50vh; }
+  .upnext { right: .6rem; left: .6rem; bottom: 96px; }
+  .upnext__card { min-width: 0; }
+  .stats { width: min(300px, 88vw); font-size: .72rem; }
+}
+
+/* Very narrow phones: drop the least-used control rather than wrap. */
+@media (max-width: 380px) {
+  .controls #btnBack, .controls #btnFwd { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
