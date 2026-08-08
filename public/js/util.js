@@ -123,6 +123,21 @@ export function initials(name) {
     .map((w) => w[0].toUpperCase()).join('') || '?';
 }
 
+/**
+ * Initials that stay distinguishable within a set — "Olti" and "Oltion" are
+ * both O, so grow the badge until the two stop colliding.
+ */
+export function badgeFor(name, allNames = []) {
+  const others = allNames.filter((n) => n !== name);
+  let label = initials(name);
+  for (let len = 2; len <= 4; len += 1) {
+    if (!others.some((other) => initials(other) === label)) break;
+    label = String(name).slice(0, len);
+    label = label[0].toUpperCase() + label.slice(1).toLowerCase();
+  }
+  return label;
+}
+
 export function escapeHtml(input) {
   return String(input).replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]

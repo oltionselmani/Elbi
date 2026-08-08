@@ -2,6 +2,7 @@ import { $, el, clear, formatBytes, qualityLabel, toast, probeVideoFile, browser
 import { api } from './api.js';
 import { state, refresh, upsertTitle, titleById } from './state.js';
 import { openDetail, openSheet, closeSheet, refreshDetail } from './views.js';
+import { applySubtitleStyle as applySubtitleStyleNow } from './player.js';
 
 const CHUNK_SIZE = 8 * 1024 * 1024;
 
@@ -598,7 +599,20 @@ export function openSettings() {
   const body = clear($('#sheetBody'));
   const seek = el('input', { type: 'number', min: '1', max: '120', value: String(state.settings.seekStep) });
   const dbl = el('input', { type: 'number', min: '1', max: '120', value: String(state.settings.doubleClickSeek) });
+  const rewind = el('input', {
+    type: 'number', min: '0', max: '60', value: String(state.settings.resumeRewind ?? 5),
+  });
   const autoplay = el('input', { type: 'checkbox', checked: state.settings.autoplayNext });
+  const subSize = el('select', {}, [
+    ['small', 'Small'], ['medium', 'Medium'], ['large', 'Large'], ['huge', 'Huge'],
+  ].map(([value, label]) => el('option', {
+    value, text: label, selected: (state.settings.subtitleSize || 'medium') === value,
+  })));
+  const subBg = el('select', {}, [
+    ['shadow', 'Drop shadow'], ['box', 'Black box'], ['none', 'None'],
+  ].map(([value, label]) => el('option', {
+    value, text: label, selected: (state.settings.subtitleBackground || 'shadow') === value,
+  })));
 
   body.append(el('div', {}, [
     el('h2', { text: 'Settings' }),
@@ -606,7 +620,24 @@ export function openSettings() {
       el('label.field', {}, [el('span', { text: 'Arrow-key skip (seconds)' }), seek]),
       el('label.field', {}, [el('span', { text: 'Double-click skip (seconds)' }), dbl]),
     ]),
+    el('label.field', {}, [
+      el('span', { text: 'Rewind when resuming (seconds)' }),
+      rewind,
+    ]),
+    el('p.muted', {
+      style: { marginTop: '-.5rem', fontSize: '.82rem' },
+      text: 'Stop at 27:47 and playback picks up at 27:42, so you catch the run-up instead of landing mid-sentence. Set to 0 to resume exactly where you stopped.',
+    }),
     el('label.checkline', {}, [autoplay, el('span', { text: 'Autoplay the next episode' })]),
+
+    el('h3', { text: 'Subtitles', style: { marginTop: '1.2rem', fontSize: '1rem' } }),
+    el('p.muted', {
+      text: 'Applies to every title. While watching, the subtitles menu also nudges timing with [ and ] when an .srt runs out of sync.',
+    }),
+    el('div.field-row', {}, [
+      el('label.field', {}, [el('span', { text: 'Text size' }), subSize]),
+      el('label.field', {}, [el('span', { text: 'Background' }), subBg]),
+    ]),
 
     el('h3', { text: 'Keyboard shortcuts', style: { marginTop: '1.2rem', fontSize: '1rem' } }),
     el('div.sourcelist', {}, [
@@ -620,7 +651,8 @@ export function openSettings() {
       [', / .', 'Previous / next frame'],
       ['< / >', 'Slower / faster'],
       ['M', 'Mute'], ['F', 'Fullscreen'], ['I', 'Picture-in-picture'],
-      ['C', 'Cycle subtitles'], ['Q', 'Cycle quality'], ['N', 'Next episode'],
+      ['C', 'Cycle subtitles'], ['[ / ]', 'Nudge subtitle timing'],
+      ['Q', 'Cycle quality'], ['N', 'Next episode'],
       ['S', 'Stats for nerds'], ['Esc', 'Leave the player'],
     ].map(([keys, what]) => el('div.sourceitem', {}, [
       el('div.sourceitem__main', {}, [el('div.sourceitem__name', { text: keys })]),
@@ -655,9 +687,14 @@ export function openSettings() {
             const res = await api.patchSettings({
               seekStep: Number(seek.value),
               doubleClickSeek: Number(dbl.value),
+              resumeRewind: Number(rewind.value),
               autoplayNext: autoplay.checked,
+              subtitleSize: subSize.value,
+              subtitleBackground: subBg.value,
             });
             state.settings = res.settings;
+            // Cue styling is injected at runtime, so refresh it immediately.
+            applySubtitleStyleNow();
             closeSheet();
             toast('Settings saved.', 'ok');
           } catch (err) {

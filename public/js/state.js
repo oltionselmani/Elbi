@@ -12,7 +12,14 @@ export const state = {
   profiles: [],
   progress: {},
   myList: [],
-  settings: { seekStep: 5, doubleClickSeek: 5, autoplayNext: true },
+  settings: {
+    seekStep: 5,
+    doubleClickSeek: 5,
+    autoplayNext: true,
+    resumeRewind: 5,
+    subtitleSize: 'medium',
+    subtitleBackground: 'shadow',
+  },
   server: {},
   activeProfile: null,
   query: '',
@@ -102,6 +109,17 @@ export function progressFor(titleId, episodeId) {
   return state.progress[progressKey(titleId, episodeId)] || null;
 }
 
+/**
+ * Where playback should actually start. Stopping at 27:47 resumes at 27:42:
+ * a few seconds of run-up beats landing in the middle of a sentence.
+ */
+export function resumePointFor(titleId, episodeId) {
+  const entry = progressFor(titleId, episodeId);
+  if (!entry || entry.finished) return 0;
+  const rewind = Number(state.settings?.resumeRewind);
+  return Math.max(0, entry.position - (Number.isFinite(rewind) ? rewind : 5));
+}
+
 /** Every playable unit of a title, in order. */
 export function playablesOf(title) {
   if (!title) return [];
@@ -140,7 +158,9 @@ export function nextUpFor(title) {
   for (const item of list) {
     const p = progressFor(item.titleId, item.episodeId);
     if (p && !p.finished && p.position > 5) {
-      if (!best || p.updatedAt > best.updatedAt) best = { item, updatedAt: p.updatedAt, resumeAt: p.position };
+      if (!best || p.updatedAt > best.updatedAt) {
+        best = { item, updatedAt: p.updatedAt, resumeAt: resumePointFor(item.titleId, item.episodeId) };
+      }
     }
   }
   if (best) return { ...best.item, resumeAt: best.resumeAt };

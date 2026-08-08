@@ -72,6 +72,12 @@ next one automatically and tells you why.
   Double-click the middle for fullscreen.
 - **Quality / source menu** — a title can hold several files (1080p, 720p, a 4K remux) and
   you switch between them mid-playback without losing your place.
+- **Resume slightly early** — stop at 27:47 and it picks up at 27:42. Five seconds of
+  run-up beats landing mid-sentence; adjustable (or set to 0) in Settings.
+- **Subtitles that behave** — pick a track while watching and Elbi remembers it for that
+  title next time. Set the text size and background (drop shadow, black box or nothing),
+  and if an `.srt` was cut for a different release, nudge its timing with `[` and `]`
+  until it lines up.
 - **Stats for nerds** (press `S`) — live resolution, **measured** frame rate, dropped
   frames, buffer ahead, average bitrate, and whether you're watching an offline copy.
   The frame rate comes from `requestVideoFrameCallback`, so it's what the browser is
@@ -89,6 +95,7 @@ next one automatically and tells you why.
 | `↑` `↓` | Volume | | `C` | Cycle subtitles |
 | `0`–`9` | Jump to 0 %–90 % | | `Q` | Cycle quality |
 | `,` `.` | Previous / next frame | | `N` | Next episode |
+| `[` `]` | Nudge subtitle timing | | | |
 | `<` `>` | Slower / faster | | `S` | Stats for nerds |
 | `Home` `End` | Start / end | | `Esc` | Leave the player |
 
@@ -119,9 +126,18 @@ quietly.
 
 ### Profiles
 
-Several profiles, each with its own Continue Watching and My List — the "Who's watching?"
-screen appears when you have more than one. Profiles organise viewing history; they are
-not a security boundary. Use the password below for that.
+Four fixed profiles — **Olti**, **Elbi**, **Oltion**, **Elbasana** — and no passwords.
+Elbi asks who's watching on the way in for exactly one reason: so Continue Watching and My
+List belong to one person instead of being shared. The last name used on a device is
+marked *last used*, but never auto-selected.
+
+The roster is fixed in code rather than editable in the UI, so nobody can accidentally add
+or delete a profile. Change the names by editing `PROFILES` in `src/server/store.js`; watch
+history is keyed to the profile ID, so renaming keeps it and changing an ID starts fresh.
+Each profile can clear its own history from **Profile → All profiles**.
+
+Profiles organise viewing history; they are not a security boundary. Use the password
+below for that.
 
 ---
 
@@ -319,13 +335,17 @@ nothing that rots when you come back to it in two years.
 npm test
 ```
 
-25 tests covering filename parsing, range-request edge cases, path-traversal refusal,
-SRT→VTT conversion, and a full server round trip: chunked upload → byte-exact streaming →
-folder scan → progress → deletion → restart.
+29 tests covering filename parsing, range-request edge cases, path-traversal refusal,
+SRT→VTT conversion, the resume-rewind arithmetic, the fixed profile roster (including that
+it refuses to be added to or deleted from, and that one profile's history never leaks into
+another's), and a full server round trip: chunked upload → byte-exact streaming → folder
+scan → progress → deletion → restart.
 
-The browser side was verified against real Chromium: playback, double-click seeking,
-quality switching mid-playback, live FPS measurement, subtitle loading, offline download,
-and seeking with the network switched off.
+The browser side was verified against real Chromium — 35 checks covering playback,
+double-click seeking, mid-playback quality switching, live FPS measurement, subtitle
+loading, subtitle timing offset and sizing, the profile gate, resuming five seconds before
+the stop point, and a further 9 covering offline download plus seeking with the network
+switched off.
 
 ---
 
@@ -338,7 +358,11 @@ works. Add it to your home screen and it runs as a standalone app.
 where they are.
 
 **Can I edit the library by hand?** Yes, `data/library.json` is plain JSON. Stop the
-server first.
+server first. The profile list is the one exception — it lives in `src/server/store.js`
+and is rewritten into the file on every start.
+
+**Why does it ask who's watching every time?** So Continue Watching stays yours. It takes
+one click, there is no password, and the last name you used is marked.
 
 **Does it transcode?** No. That would mean bundling ffmpeg and burning a lot of CPU. Remux
 with the commands above instead — it takes seconds and doesn't touch quality.

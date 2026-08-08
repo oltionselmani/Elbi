@@ -35,6 +35,7 @@ export async function handleApi(req, res, url) {
     case 'progress': return handleProgress(req, res, route, method);
     case 'mylist': return handleMyList(req, res, method);
     case 'profiles': return handleProfiles(req, res, route, method);
+    case 'reset-profile': return handleResetProfile(req, res, route, method);
     case 'settings': return handleSettings(req, res, method);
     case 'scan': return handleScan(req, res, method);
     case 'artwork': return handleArtwork(req, res, url, method);
@@ -486,34 +487,21 @@ async function handleMyList(req, res, method) {
 
 async function handleProfiles(req, res, route, method) {
   const db = loadDb();
-  if (method === 'POST') {
-    const body = await readJson(req);
-    const name = String(body.name || '').trim().slice(0, 40);
-    if (!name) return fail(res, 400, 'A profile name is required');
-    if (db.profiles.length >= 8) return fail(res, 400, 'Elbi supports up to 8 profiles');
-    const profile = { id: id('p_'), name, color: body.color || '#e50914', createdAt: Date.now() };
-    db.profiles.push(profile);
-    await saveDb();
-    return json(res, 201, { profiles: db.profiles, profile });
-  }
-  if (method === 'PATCH' && route[1]) {
-    const body = await readJson(req);
-    const profile = db.profiles.find((p) => p.id === route[1]);
-    if (!profile) return fail(res, 404, 'No such profile');
-    if (body.name) profile.name = String(body.name).trim().slice(0, 40);
-    if (body.color) profile.color = String(body.color).slice(0, 32);
-    await saveDb();
-    return json(res, 200, { profiles: db.profiles });
-  }
-  if (method === 'DELETE' && route[1]) {
-    if (db.profiles.length <= 1) return fail(res, 400, 'At least one profile must remain');
-    db.profiles = db.profiles.filter((p) => p.id !== route[1]);
-    delete db.progress[route[1]];
-    delete db.myList[route[1]];
-    await saveDb();
-    return json(res, 200, { profiles: db.profiles });
-  }
-  return fail(res, 405, 'Method not allowed');
+  if (method === 'GET') return json(res, 200, { profiles: db.profiles, fixed: true });
+  // The roster is fixed in code (see store.js); there is nothing to create,
+  // rename or remove, so say so plainly instead of half-supporting it.
+  return fail(res, 403, `Elbi has a fixed set of profiles: ${db.profiles.map((p) => p.name).join(', ')}.`);
+}
+
+/** Clear one profile's watch history without touching anyone else's. */
+async function handleResetProfile(req, res, route, method) {
+  if (method !== 'POST') return fail(res, 405, 'Method not allowed');
+  const db = loadDb();
+  const profileId = route[1];
+  if (!db.profiles.some((p) => p.id === profileId)) return fail(res, 404, 'No such profile');
+  db.progress[profileId] = {};
+  await saveDb();
+  return json(res, 200, { progress: {} });
 }
 
 async function handleSettings(req, res, method) {
@@ -524,6 +512,13 @@ async function handleSettings(req, res, method) {
   if ('seekStep' in body) db.settings.seekStep = clamp(Number(body.seekStep), 1, 120, 5);
   if ('doubleClickSeek' in body) db.settings.doubleClickSeek = clamp(Number(body.doubleClickSeek), 1, 120, 5);
   if ('autoplayNext' in body) db.settings.autoplayNext = Boolean(body.autoplayNext);
+  if ('resumeRewind' in body) db.settings.resumeRewind = clamp(Number(body.resumeRewind), 0, 60, 5);
+  if ('subtitleSize' in body && ['small', 'medium', 'large', 'huge'].includes(body.subtitleSize)) {
+    db.settings.subtitleSize = body.subtitleSize;
+  }
+  if ('subtitleBackground' in body && ['none', 'shadow', 'box'].includes(body.subtitleBackground)) {
+    db.settings.subtitleBackground = body.subtitleBackground;
+  }
   await saveDb();
   return json(res, 200, { settings: db.settings });
 }

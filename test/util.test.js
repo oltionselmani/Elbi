@@ -95,3 +95,31 @@ test('assorted helpers', () => {
   assert.equal(mimeFor('x.vtt'), 'text/vtt; charset=utf-8');
   assert.equal(mimeFor('x.unknown'), 'application/octet-stream');
 });
+
+/**
+ * The resume rewind is client-side arithmetic (state.js resumePointFor), but
+ * the rule is worth pinning down here: stopping at 27:47 resumes at 27:42.
+ */
+function resumePoint(position, rewind, finished = false) {
+  if (finished) return 0;
+  return Math.max(0, position - (Number.isFinite(rewind) ? rewind : 5));
+}
+
+test('resuming rewinds a few seconds, without ever going negative', () => {
+  const stopped = 27 * 60 + 47;            // 27:47
+  assert.equal(resumePoint(stopped, 5), 27 * 60 + 42); // 27:42
+
+  // Near the very start there is nothing to rewind into.
+  assert.equal(resumePoint(3, 5), 0);
+  assert.equal(resumePoint(5, 5), 0);
+
+  // A finished title starts over rather than resuming.
+  assert.equal(resumePoint(5390, 5, true), 0);
+
+  // The rewind is configurable, including switching it off.
+  assert.equal(resumePoint(600, 0), 600);
+  assert.equal(resumePoint(600, 30), 570);
+
+  // A missing setting falls back to 5 rather than NaN.
+  assert.equal(resumePoint(600, undefined), 595);
+});

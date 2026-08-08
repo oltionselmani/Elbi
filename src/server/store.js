@@ -2,18 +2,39 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { config } from './config.js';
-import { id } from './util.js';
 
 const DB_FILE = () => path.join(config.dataDir, 'library.json');
+
+/**
+ * The household. This roster is fixed: no passwords, no adding, no deleting —
+ * picking a name on the way in is only there to keep Continue Watching and
+ * My List separate per person. IDs are derived from the name rather than
+ * random, so watch history survives a wiped library.json.
+ */
+export const PROFILES = [
+  { id: 'p_olti', name: 'Olti', color: '#e50914' },
+  { id: 'p_elbi', name: 'Elbi', color: '#1f8fff' },
+  { id: 'p_oltion', name: 'Oltion', color: '#46d369' },
+  { id: 'p_elbasana', name: 'Elbasana', color: '#a34bff' },
+];
 
 function emptyDb() {
   return {
     version: 1,
     titles: [],
-    profiles: [],
+    profiles: PROFILES.map((p) => ({ ...p })),
     progress: {},
     myList: {},
-    settings: { seekStep: 5, doubleClickSeek: 5, autoplayNext: true },
+    settings: {
+      seekStep: 5,
+      doubleClickSeek: 5,
+      autoplayNext: true,
+      // Resuming drops you slightly before where you stopped, so you get a
+      // moment to re-orient instead of landing mid-sentence.
+      resumeRewind: 5,
+      subtitleSize: 'medium',
+      subtitleBackground: 'shadow',
+    },
   };
 }
 
@@ -35,9 +56,10 @@ function normalize(db) {
     title.type = title.type === 'series' ? 'series' : 'movie';
   }
 
-  if (out.profiles.length === 0) {
-    out.profiles.push({ id: id('p_'), name: 'Me', color: '#e50914', createdAt: Date.now() });
-  }
+  // The roster is authoritative in code, not in the file: a library.json from
+  // an older build (or a hand-edit) is brought back in line here, while any
+  // watch history recorded against those profile IDs is left untouched.
+  out.profiles = PROFILES.map((p) => ({ ...p }));
   return out;
 }
 

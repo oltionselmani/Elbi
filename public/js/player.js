@@ -1,7 +1,7 @@
 import { $, el, clear, formatTime, formatBytes, qualityLabel, toast, codecDiagnosis, browserCodecs } from './util.js';
 import { api, streamUrl, subtitleUrl } from './api.js';
 import {
-  state, playablesOf, progressFor, savedVolume, saveVolume, savedMuted, emit,
+  state, playablesOf, progressFor, resumePointFor, savedVolume, saveVolume, savedMuted, emit,
 } from './state.js';
 import { isSourceOffline } from './offline.js';
 
@@ -28,6 +28,9 @@ const session = {
   scrubbing: false,
   active: false,
   failed: new Set(),   // sources this browser has already refused to decode
+  resumedFrom: null,   // { stoppedAt, resumeAt } when this is a resume
+  subOffset: 0,        // subtitle timing nudge, in seconds
+  cueBase: new WeakMap(), // original cue times, so offsets stay absolute
 };
 
 function cache() {
@@ -127,8 +130,15 @@ export async function play({ title, item, sourceId, startAt }) {
     : pickDefaultSource(session.sources);
   session.sourceIndex = preferred >= 0 ? preferred : 0;
 
+  // Resuming rewinds a few seconds (see resumePointFor) so you get a run-up
+  // rather than restarting mid-sentence.
   const saved = progressFor(target.titleId, target.episodeId);
-  const resumeAt = Number.isFinite(startAt) ? startAt : (saved && !saved.finished ? saved.position : 0);
+  const resumeAt = Number.isFinite(startAt)
+    ? startAt
+    : resumePointFor(target.titleId, target.episodeId);
+  session.resumedFrom = (!Number.isFinite(startAt) && saved && !saved.finished && resumeAt > 0)
+    ? { stoppedAt: saved.position, resumeAt }
+    : null;
 
   dom.root.hidden = false;
   document.body.classList.add('is-playing');
@@ -271,8 +281,20 @@ function clearTracks() {
   for (const track of [...dom.video.querySelectorAll('track')]) track.remove();
 }
 
+const LS_SUB_CHOICE = 'elbi.subtitle.';
+
+function subtitleMemory(titleId) {
+  try { return localStorage.getItem(LS_SUB_CHOICE + titleId); } catch { return null; }
+}
+function rememberSubtitle(titleId, label) {
+  try { localStorage.setItem(LS_SUB_CHOICE + titleId, label); } catch { /* private mode */ }
+}
+
 function attachTracks() {
   const subs = session.item.subtitles || [];
+  session.subOffset = 0;
+  session.cueBase = new WeakMap();
+
   subs.forEach((sub, i) => {
     const track = document.createElement('track');
     track.kind = 'subtitles';
@@ -281,10 +303,104 @@ function attachTracks() {
     track.src = subtitleUrl(session.title.id, sub.id);
     dom.video.append(track);
   });
-  // Nothing is shown until the user picks a track from the menu.
+
+  applySubtitleStyle();
+
+  // Re-select whatever this title was last watched with; otherwise stay off.
+  const remembered = subtitleMemory(session.title.id);
   requestAnimationFrame(() => {
-    for (const track of dom.video.textTracks) track.mode = 'disabled';
+    const tracks = [...dom.video.textTracks];
+    for (const track of tracks) track.mode = 'disabled';
+    if (remembered && remembered !== 'off') {
+      const match = tracks.find((t) => t.label === remembered);
+      if (match) showTrack(match, { quiet: true });
+    }
+    buildSubsMenu();
   });
+}
+
+function showTrack(track, { quiet = false } = {}) {
+  for (const t of dom.video.textTracks) t.mode = 'disabled';
+  if (!track) {
+    rememberSubtitle(session.title.id, 'off');
+    if (!quiet) flash('Subtitles off');
+    buildSubsMenu();
+    return;
+  }
+  track.mode = 'showing';
+  rememberSubtitle(session.title.id, track.label);
+  // Cues only exist once the track is no longer disabled, so any pending
+  // timing offset has to be re-applied here rather than at load time.
+  setTimeout(() => applySubtitleOffset(session.subOffset || 0, true), 60);
+  if (!quiet) flash(`Subtitles: ${track.label}`);
+  buildSubsMenu();
+}
+
+function showingTrack() {
+  return [...dom.video.textTracks].find((t) => t.mode === 'showing') || null;
+}
+
+/**
+ * Shift the visible track in time. Handy when an .srt was cut for a different
+ * release and every line lands a second or two early.
+ */
+function applySubtitleOffset(seconds, silent = false) {
+  const track = showingTrack();
+  session.subOffset = Math.round(seconds * 4) / 4;
+  if (!track?.cues?.length) return;
+
+  for (const cue of track.cues) {
+    let base = session.cueBase.get(cue);
+    if (!base) {
+      base = { start: cue.startTime, end: cue.endTime };
+      session.cueBase.set(cue, base);
+    }
+    // Cue times are writable; clamp so a large negative shift stays valid.
+    const start = Math.max(0, base.start + session.subOffset);
+    const end = Math.max(start + 0.05, base.end + session.subOffset);
+    try {
+      cue.startTime = start;
+      cue.endTime = end;
+    } catch { /* some cue kinds are read-only; skip them */ }
+  }
+  const readout = document.getElementById('subOffsetLabel');
+  if (readout) {
+    readout.textContent = `${session.subOffset > 0 ? '+' : ''}${session.subOffset.toFixed(2)}s`;
+  }
+  if (!silent) {
+    flash(session.subOffset === 0
+      ? 'Subtitle timing reset'
+      : `Subtitles ${session.subOffset > 0 ? '+' : ''}${session.subOffset.toFixed(2)}s`);
+  }
+}
+
+/** ::cue cannot be styled from a stylesheet variable, so the rule is rewritten. */
+export function applySubtitleStyle() {
+  const sizes = { small: '2.6vh', medium: '3.4vh', large: '4.4vh', huge: '5.6vh' };
+  const size = sizes[state.settings?.subtitleSize] || sizes.medium;
+  const background = state.settings?.subtitleBackground || 'shadow';
+
+  const paint = background === 'box'
+    ? 'background: rgba(0, 0, 0, .78);'
+    : background === 'none'
+      ? 'background: transparent;'
+      : 'background: transparent; text-shadow: 0 2px 4px #000, 0 0 8px rgba(0,0,0,.9);';
+
+  let style = document.getElementById('elbi-cue-style');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'elbi-cue-style';
+    document.head.append(style);
+  }
+  style.textContent = `
+    #video::cue {
+      font-size: ${size};
+      line-height: 1.3;
+      color: #fff;
+      font-family: inherit;
+      ${paint}
+    }
+  `;
 }
 
 // ---------------------------------------------------------------------------
@@ -372,39 +488,95 @@ function buildSubsMenu() {
   panel.append(el('div.menu__label', { text: 'Subtitles' }));
 
   const tracks = [...dom.video.textTracks];
+  const active = showingTrack();
+
   const off = el('button.menu__item', {
     type: 'button',
-    onclick: () => {
-      for (const t of dom.video.textTracks) t.mode = 'disabled';
-      closeMenus();
-      buildSubsMenu();
-      flash('Subtitles off');
-    },
+    onclick: () => { closeMenus(); showTrack(null); },
   }, [el('span', { text: 'Off' })]);
-  if (!tracks.some((t) => t.mode === 'showing')) off.classList.add('is-active');
+  if (!active) off.classList.add('is-active');
   panel.append(off);
 
   tracks.forEach((track, i) => {
     const item = el('button.menu__item', {
       type: 'button',
-      onclick: () => {
-        for (const t of dom.video.textTracks) t.mode = 'disabled';
-        track.mode = 'showing';
-        closeMenus();
-        buildSubsMenu();
-        flash(`Subtitles: ${track.label}`);
-      },
-    }, [el('span', { text: track.label || `Track ${i + 1}` })]);
-    if (track.mode === 'showing') item.classList.add('is-active');
+      onclick: () => { closeMenus(); showTrack(track); },
+    }, [
+      el('span', { text: track.label || `Track ${i + 1}` }),
+      track.language ? el('small', { text: track.language }) : null,
+    ]);
+    if (track === active) item.classList.add('is-active');
     panel.append(item);
   });
 
   if (!tracks.length) {
     panel.append(el('div.menu__label', {
-      text: 'No subtitle tracks. Add .srt or .vtt from the title page.',
+      text: 'No subtitle tracks yet. Add a .srt or .vtt from the title page.',
       style: { textTransform: 'none', letterSpacing: '0' },
     }));
+    return;
   }
+
+  panel.append(el('div.menu__sep'));
+  panel.append(el('div.menu__label', { text: 'Text size' }));
+  for (const [value, label] of [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large'], ['huge', 'Huge']]) {
+    const item = el('button.menu__item', {
+      type: 'button',
+      onclick: async () => {
+        state.settings.subtitleSize = value;
+        applySubtitleStyle();
+        buildSubsMenu();
+        await api.patchSettings({ subtitleSize: value }).catch(() => {});
+      },
+    }, [el('span', { text: label })]);
+    if ((state.settings.subtitleSize || 'medium') === value) item.classList.add('is-active');
+    panel.append(item);
+  }
+
+  panel.append(el('div.menu__label', { text: 'Background' }));
+  for (const [value, label] of [['shadow', 'Drop shadow'], ['box', 'Black box'], ['none', 'None']]) {
+    const item = el('button.menu__item', {
+      type: 'button',
+      onclick: async () => {
+        state.settings.subtitleBackground = value;
+        applySubtitleStyle();
+        buildSubsMenu();
+        await api.patchSettings({ subtitleBackground: value }).catch(() => {});
+      },
+    }, [el('span', { text: label })]);
+    if ((state.settings.subtitleBackground || 'shadow') === value) item.classList.add('is-active');
+    panel.append(item);
+  }
+
+  panel.append(el('div.menu__sep'));
+  panel.append(el('div.menu__label', { text: 'Timing' }));
+  panel.append(el('div', {
+    style: { display: 'flex', gap: '.3rem', alignItems: 'center', padding: '.3rem .6rem .5rem' },
+  }, [
+    el('button.btn.btn--ghost.btn--sm', {
+      type: 'button', title: 'Show subtitles earlier',
+      onclick: () => applySubtitleOffset((session.subOffset || 0) - 0.25),
+    }, ['−0.25s']),
+    el('span', {
+      id: 'subOffsetLabel',
+      style: { flex: '1', textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontSize: '.8rem' },
+      text: `${(session.subOffset || 0) > 0 ? '+' : ''}${(session.subOffset || 0).toFixed(2)}s`,
+    }),
+    el('button.btn.btn--ghost.btn--sm', {
+      type: 'button', title: 'Show subtitles later',
+      onclick: () => applySubtitleOffset((session.subOffset || 0) + 0.25),
+    }, ['+0.25s']),
+  ]));
+  if (session.subOffset) {
+    panel.append(el('button.menu__item', {
+      type: 'button',
+      onclick: () => applySubtitleOffset(0),
+    }, [el('span', { text: 'Reset timing' })]));
+  }
+  panel.append(el('div.menu__label', {
+    text: 'Shortcuts: C cycles tracks, [ and ] nudge timing.',
+    style: { textTransform: 'none', letterSpacing: '0' },
+  }));
 }
 
 function buildMoreMenu() {
@@ -788,6 +960,11 @@ function bindEvents() {
       seekTo(session.pendingSeek);
       session.pendingSeek = null;
     }
+    if (session.resumedFrom) {
+      const { stoppedAt, resumeAt } = session.resumedFrom;
+      flash(`Resuming at ${formatTime(resumeAt)} — you stopped at ${formatTime(stoppedAt)}`);
+      session.resumedFrom = null;
+    }
     renderChrome();
   });
 
@@ -992,6 +1169,8 @@ function onKeydown(event) {
     case 'c': cycleSubtitles(); break;
     case 'q': cycleQuality(); break;
     case 'n': playNext(); break;
+    case '[': applySubtitleOffset((session.subOffset || 0) - 0.25); break;
+    case ']': applySubtitleOffset((session.subOffset || 0) + 0.25); break;
     case 'Escape':
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
       else close();
@@ -1019,17 +1198,10 @@ function onKeydown(event) {
 
 function cycleSubtitles() {
   const tracks = [...dom.video.textTracks];
-  if (!tracks.length) return flash('No subtitle tracks');
-  const active = tracks.findIndex((t) => t.mode === 'showing');
-  for (const t of tracks) t.mode = 'disabled';
+  if (!tracks.length) return flash('No subtitle tracks — add a .srt or .vtt from the title page');
+  const active = tracks.indexOf(showingTrack());
   const next = active + 1;
-  if (next < tracks.length) {
-    tracks[next].mode = 'showing';
-    flash(`Subtitles: ${tracks[next].label}`);
-  } else {
-    flash('Subtitles off');
-  }
-  buildSubsMenu();
+  showTrack(next < tracks.length ? tracks[next] : null);
   return undefined;
 }
 

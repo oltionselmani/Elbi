@@ -75,13 +75,27 @@ test('serves the app shell and its client routes', async () => {
   assert.equal(missing.status, 404);
 });
 
-test('starts with one profile and an empty library', async () => {
+test('starts with the four fixed profiles and an empty library', async () => {
   const res = await call('GET', '/api/library');
   assert.equal(res.status, 200);
   assert.equal(res.body.titles.length, 0);
-  assert.equal(res.body.profiles.length, 1);
+  assert.deepEqual(res.body.profiles.map((p) => p.name), ['Olti', 'Elbi', 'Oltion', 'Elbasana']);
+  assert.deepEqual(res.body.profiles.map((p) => p.id), ['p_olti', 'p_elbi', 'p_oltion', 'p_elbasana']);
   assert.equal(res.body.settings.seekStep, 5);
+  assert.equal(res.body.settings.resumeRewind, 5);
   assert.equal(res.body.server.allowRemote, false);
+});
+
+test('the profile roster cannot be added to, renamed or deleted', async () => {
+  const created = await call('POST', '/api/profiles', { name: 'Intruder' });
+  assert.equal(created.status, 403);
+  assert.match(created.body.error, /Olti, Elbi, Oltion, Elbasana/);
+
+  assert.equal((await call('PATCH', '/api/profiles/p_olti', { name: 'Nope' })).status, 403);
+  assert.equal((await call('DELETE', '/api/profiles/p_olti')).status, 403);
+
+  const after = await call('GET', '/api/library');
+  assert.deepEqual(after.body.profiles.map((p) => p.name), ['Olti', 'Elbi', 'Oltion', 'Elbasana']);
 });
 
 let titleId;
@@ -242,8 +256,7 @@ test('scanning outside the permitted roots is rejected', async () => {
 });
 
 test('watch progress is stored, and finishing a title clears it from Continue Watching', async () => {
-  const lib = await call('GET', '/api/library');
-  const profileId = lib.body.profiles[0].id;
+  const profileId = 'p_olti';
 
   const mid = await call('POST', '/api/progress', {
     profileId, titleId, position: 1200, duration: 5400,
@@ -259,14 +272,46 @@ test('watch progress is stored, and finishing a title clears it from Continue Wa
 });
 
 test('my list add/remove round trip', async () => {
-  const lib = await call('GET', '/api/library');
-  const profileId = lib.body.profiles[0].id;
+  const profileId = 'p_olti';
 
   const added = await call('POST', '/api/mylist', { profileId, titleId });
   assert.deepEqual(added.body.myList, [titleId]);
 
   const removed = await call('DELETE', '/api/mylist', { profileId, titleId });
   assert.deepEqual(removed.body.myList, []);
+});
+
+test('each profile keeps its own watch history', async () => {
+  await call('POST', '/api/progress', {
+    profileId: 'p_elbasana', titleId, position: 300, duration: 5400,
+  });
+
+  const mine = await call('GET', '/api/library?profile=p_elbasana');
+  assert.equal(mine.body.progress[`${titleId}:-`].position, 300);
+
+  // Olti finished this title earlier; Elbasana's 300s must not leak across.
+  const other = await call('GET', '/api/library?profile=p_oltion');
+  assert.deepEqual(other.body.progress, {});
+
+  // Resetting one profile leaves the others alone.
+  const reset = await call('POST', '/api/reset-profile/p_elbasana');
+  assert.equal(reset.status, 200);
+  assert.deepEqual((await call('GET', '/api/library?profile=p_elbasana')).body.progress, {});
+  assert.ok((await call('GET', '/api/library?profile=p_olti')).body.progress[`${titleId}:-`]);
+});
+
+test('resume settings are stored and clamped', async () => {
+  assert.equal((await call('PATCH', '/api/settings', { resumeRewind: 12 })).body.settings.resumeRewind, 12);
+  assert.equal((await call('PATCH', '/api/settings', { resumeRewind: 999 })).body.settings.resumeRewind, 60);
+  assert.equal((await call('PATCH', '/api/settings', { resumeRewind: -4 })).body.settings.resumeRewind, 0);
+  assert.equal((await call('PATCH', '/api/settings', { resumeRewind: 5 })).body.settings.resumeRewind, 5);
+
+  const subs = await call('PATCH', '/api/settings', { subtitleSize: 'large', subtitleBackground: 'box' });
+  assert.equal(subs.body.settings.subtitleSize, 'large');
+  assert.equal(subs.body.settings.subtitleBackground, 'box');
+  // An unknown value is ignored rather than stored.
+  const bogus = await call('PATCH', '/api/settings', { subtitleSize: 'gigantic' });
+  assert.equal(bogus.body.settings.subtitleSize, 'large');
 });
 
 test('titles can be edited and settings persisted', async () => {

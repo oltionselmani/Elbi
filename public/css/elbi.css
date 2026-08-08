@@ -136,6 +136,14 @@ dl { margin: 0; }
 .profile:hover .profile__face { border-color: #fff; transform: scale(1.05); }
 .profile__name { color: var(--muted); font-size: .92rem; }
 .profile:hover .profile__name { color: #fff; }
+.profile__hint {
+  font-size: .68rem; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted); margin-top: -.25rem;
+}
+.profile--last .profile__face { border-color: rgba(255, 255, 255, .45); }
+.profile--last .profile__hint { color: var(--brand); }
+
+.gate__card--wide .muted { margin-bottom: 0; }
 
 /* ── Topbar ───────────────────────────────────────────────────────────── */
 .topbar {

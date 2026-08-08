@@ -1,4 +1,4 @@
-import { $, $$, el, clear, debounce, toast, hashColor, initials, formatBytes } from './util.js';
+import { $, $$, el, clear, debounce, toast, hashColor, badgeFor, formatBytes } from './util.js';
 import { api, setUnauthorizedHandler } from './api.js';
 import {
   state, refresh, subscribe, savedProfileId, rememberProfile, forgetProfile,
@@ -69,7 +69,7 @@ function updateChrome() {
   const profile = state.profiles.find((p) => p.id === state.activeProfile);
   const avatar = $('#profileBtn');
   if (profile) {
-    avatar.textContent = initials(profile.name);
+    avatar.textContent = badgeFor(profile.name, state.profiles.map((p) => p.name));
     avatar.style.background = profile.color || hashColor(profile.name);
     avatar.title = profile.name;
   }
@@ -103,7 +103,7 @@ function showProfiles() {
   renderProfileList($('#profileList'), (profile) => {
     rememberProfile(profile.id);
     startApp();
-  });
+  }, savedProfileId());
 }
 
 async function startApp() {
@@ -151,16 +151,10 @@ async function boot() {
     return;
   }
 
-  const saved = savedProfileId();
-  if (saved && state.profiles.some((p) => p.id === saved)) {
-    state.activeProfile = saved;
-    await startApp();
-  } else if (state.profiles.length === 1) {
-    rememberProfile(state.profiles[0].id);
-    await startApp();
-  } else {
-    showProfiles();
-  }
+  // Always ask who is watching on a fresh load. Continue Watching is only
+  // useful if it belongs to one person, and there is no password to make the
+  // choice feel like a login. The last pick is highlighted, not auto-applied.
+  showProfiles();
   return undefined;
 }
 
@@ -180,8 +174,7 @@ function bindGlobalUi() {
     }
   });
 
-  // profile switching
-  $('#manageProfilesBtn').addEventListener('click', openProfileManager);
+  // profile switching (the roster itself is fixed; see store.js)
   $('#profileBtn').addEventListener('click', openProfileMenu);
 
   // navigation
@@ -289,12 +282,12 @@ function openProfileMenu() {
           background: profile.color || hashColor(profile.name),
           borderColor: profile.id === state.activeProfile ? '#fff' : 'transparent',
         },
-        text: initials(profile.name),
+        text: badgeFor(profile.name, state.profiles.map((p) => p.name)),
       }),
       el('div.profile__name', { text: profile.name }),
     ]))),
     el('div.row-gap', {}, [
-      el('button.btn.btn--ghost', { type: 'button', onclick: openProfileManager }, ['Manage profiles']),
+      el('button.btn.btn--ghost', { type: 'button', onclick: openProfileManager }, ['All profiles']),
       el('button.btn.btn--ghost', { type: 'button', onclick: () => { closeSheet(); openSettings(); } }, ['Settings']),
       el('button.btn.btn--ghost', {
         type: 'button',
@@ -307,56 +300,62 @@ function openProfileMenu() {
 
 function openProfileManager() {
   const body = clear($('#sheetBody'));
-  const name = el('input', { type: 'text', placeholder: 'Name' });
-  const color = el('input', { type: 'color', value: '#e50914' });
-  const output = el('div');
-
-  const rows = state.profiles.map((profile) => el('div.sourceitem', {}, [
-    el('div.profile__face', {
-      style: { background: profile.color || hashColor(profile.name), width: '34px', height: '34px', fontSize: '.9rem', borderRadius: '8px' },
-      text: initials(profile.name),
-    }),
-    el('div.sourceitem__main', {}, [el('div.sourceitem__name', { text: profile.name })]),
-    state.profiles.length > 1 ? el('button.iconbtn', {
-      type: 'button',
-      title: 'Delete profile',
-      onclick: async () => {
-        if (!confirm(`Delete profile "${profile.name}"? Its watch history goes with it.`)) return;
-        try {
-          await api.deleteProfile(profile.id);
-          if (state.activeProfile === profile.id) forgetProfile();
-          await refresh();
-          closeSheet();
-          if (!state.activeProfile) showProfiles();
-          else openProfileManager();
-        } catch (err) { toast(err.message, 'err'); }
-      },
-    }, ['✕']) : null,
-  ]));
 
   body.append(el('div', {}, [
     el('h2', { text: 'Profiles' }),
-    el('div.sourcelist', {}, rows),
-    el('h3', { text: 'Add a profile', style: { marginTop: '1.2rem', fontSize: '1rem' } }),
-    el('div.field-row', {}, [
-      el('label.field', {}, [el('span', { text: 'Name' }), name]),
-      el('label.field', {}, [el('span', { text: 'Colour' }), color]),
-    ]),
-    el('button.btn.btn--primary', {
-      type: 'button',
-      onclick: async () => {
-        if (!name.value.trim()) return toast('Give the profile a name.', 'err');
-        try {
-          await api.createProfile(name.value.trim(), color.value);
+    el('p.muted', {
+      text: 'Elbi has four fixed profiles and no passwords. Picking a name on the way in exists only to keep Continue Watching and My List separate for each person.',
+    }),
+    el('div.profiles', {}, state.profiles.map((profile) => {
+      const isActive = profile.id === state.activeProfile;
+      return el('button.profile', {
+        type: 'button',
+        onclick: async () => {
+          rememberProfile(profile.id);
+          closeSheet();
           await refresh();
-          openProfileManager();
-        } catch (err) {
-          output.append(el('div.note.note--bad', { text: err.message }));
-        }
-        return undefined;
-      },
-    }, ['Create profile']),
-    output,
+          render();
+          toast(`Now watching as ${profile.name}.`, 'ok');
+        },
+      }, [
+        el('div.profile__face', {
+          style: {
+            background: profile.color || hashColor(profile.name),
+            borderColor: isActive ? '#fff' : 'transparent',
+          },
+          text: badgeFor(profile.name, state.profiles.map((p) => p.name)),
+        }),
+        el('div.profile__name', { text: profile.name }),
+        isActive ? el('div.profile__hint', { text: 'watching now' }) : null,
+      ]);
+    })),
+
+    el('div.note', {
+      text: 'The roster is fixed in code — edit PROFILES in src/server/store.js if you ever want different names.',
+    }),
+
+    el('div.row-gap', { style: { marginTop: '1rem' } }, [
+      el('button.btn.btn--ghost', {
+        type: 'button',
+        onclick: () => { forgetProfile(); closeSheet(); showProfiles(); },
+      }, ['Switch profile']),
+      el('button.btn.btn--danger', {
+        type: 'button',
+        onclick: async () => {
+          const me = state.profiles.find((p) => p.id === state.activeProfile);
+          if (!confirm(`Clear ${me?.name || 'this profile'}'s Continue Watching? Nobody else is affected.`)) return;
+          try {
+            await api.resetProfile(state.activeProfile);
+            await refresh();
+            render();
+            closeSheet();
+            toast('Watch history cleared.', 'ok');
+          } catch (err) {
+            toast(err.message, 'err');
+          }
+        },
+      }, ['Clear my watch history']),
+    ]),
   ]));
   openSheet();
 }

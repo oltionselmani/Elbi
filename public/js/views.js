@@ -1,7 +1,7 @@
-import { $, el, clear, formatTime, formatRuntime, formatBytes, qualityLabel, toast, hashColor, initials } from './util.js';
+import { $, el, clear, formatTime, formatRuntime, formatBytes, qualityLabel, toast, hashColor, badgeFor } from './util.js';
 import { api, streamUrl } from './api.js';
 import {
-  state, playablesOf, progressFor, continueWatching, allGenres, searchTitles,
+  state, playablesOf, progressFor, resumePointFor, continueWatching, allGenres, searchTitles,
   titleById, hasPlayableSource, upsertTitle, removeTitleLocal, refresh,
 } from './state.js';
 import { play } from './player.js';
@@ -238,7 +238,9 @@ function renderHero(title) {
           type: 'button',
           onclick: () => startPlayback(title),
         }, [elSvg('<svg viewBox="0 0 24 24" class="icon"><path d="M8 5v14l11-7L8 5Z"/></svg>'),
-          progress && !progress.finished ? 'Resume' : 'Play']),
+          progress && !progress.finished
+            ? `Resume · ${formatTime(resumePointFor(title.id, playablesOf(title)[0]?.episodeId))}`
+            : 'Play']),
         el('button.btn', { type: 'button', onclick: () => openDetail(title.id) }, ['More info']),
       ]),
     ]),
@@ -361,7 +363,13 @@ function detailContent(title, focusEpisodeId = null) {
           type: 'button',
           disabled: !hasPlayableSource(title),
           onclick: () => { closeDetail(); startPlayback(title, first); },
-        }, [progress && !progress.finished ? `Resume · ${formatTime(progress.position)}` : 'Play']),
+          // Show where it will actually start, which is a little before you stopped.
+          title: progress && !progress.finished
+            ? `You stopped at ${formatTime(progress.position)}`
+            : '',
+        }, [progress && !progress.finished
+          ? `Resume · ${formatTime(resumePointFor(title.id, (first || list[0])?.episodeId))}`
+          : 'Play']),
         el('button.btn', {
           type: 'button',
           onclick: async (e) => {
@@ -909,16 +917,25 @@ export function openDownloads() {
 // ---------------------------------------------------------------------------
 // profiles
 
-export function renderProfileList(host, onPick) {
+export function renderProfileList(host, onPick, highlightId = null) {
   clear(host);
+  const names = state.profiles.map((p) => p.name);
   for (const profile of state.profiles) {
-    host.append(el('button.profile', { type: 'button', onclick: () => onPick(profile) }, [
-      el('div.profile__face', {
-        style: { background: profile.color || hashColor(profile.name) },
-        text: initials(profile.name),
-      }),
-      el('div.profile__name', { text: profile.name }),
-    ]));
+    const face = el('div.profile__face', {
+      style: { background: profile.color || hashColor(profile.name) },
+      text: badgeFor(profile.name, names),
+    });
+    const node = el('button.profile', {
+      type: 'button',
+      onclick: () => onPick(profile),
+      'aria-label': `Watch as ${profile.name}`,
+    }, [face, el('div.profile__name', { text: profile.name })]);
+    // The last person to watch on this device is marked, not auto-selected.
+    if (profile.id === highlightId) {
+      node.classList.add('profile--last');
+      node.append(el('div.profile__hint', { text: 'last used' }));
+    }
+    host.append(node);
   }
 }
 
