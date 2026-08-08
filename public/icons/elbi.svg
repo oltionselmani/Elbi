@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Elbi">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff2733"/>
+      <stop offset="1" stop-color="#a5060e"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="104" fill="#0b0b0f"/>
+  <rect x="40" y="40" width="432" height="432" rx="76" fill="url(#g)"/>
+  <path d="M206 152v208l160-104z" fill="#fff"/>
+  <rect x="118" y="152" width="46" height="208" rx="14" fill="#fff" opacity=".92"/>
+</svg>

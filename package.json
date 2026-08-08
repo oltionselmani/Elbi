@@ -1,0 +1,24 @@
+{
+  "name": "elbi",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Elbi — a self-hosted streaming site for your own movie library. No dependencies, no build step.",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "scan": "node scripts/scan.js"
+  },
+  "keywords": [
+    "streaming",
+    "media-server",
+    "video",
+    "self-hosted"
+  ],
+  "license": "MIT"
+}

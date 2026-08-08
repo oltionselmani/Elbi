@@ -1,0 +1,19 @@
+# Runtime data — your library index, artwork, sessions and secrets.
+# Ignore the contents, keep the folder (git cannot un-ignore inside an
+# ignored directory, so the trailing /* matters here).
+/data/*
+!/data/.gitkeep
+
+# Your media. Elbi never copies these anywhere else.
+/media/*
+!/media/.gitkeep
+
+# Optional drop-in for HLS playback in Chrome/Firefox
+/public/vendor/
+
+node_modules/
+npm-debug.log*
+.DS_Store
+Thumbs.db
+*.corrupt-*
+.env

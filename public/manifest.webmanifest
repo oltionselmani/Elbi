@@ -1,0 +1,18 @@
+{
+  "name": "Elbi",
+  "short_name": "Elbi",
+  "description": "Your own streaming library — upload your movies, stream public-domain films, watch offline.",
+  "start_url": "/browse",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0b0f",
+  "theme_color": "#0b0b0f",
+  "categories": ["entertainment", "video"],
+  "icons": [
+    { "src": "/icons/elbi.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icons/elbi-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/elbi-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/elbi-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
