@@ -124,18 +124,38 @@ export function initials(name) {
 }
 
 /**
- * Initials that stay distinguishable within a set — "Olti" and "Oltion" are
- * both O, so grow the badge until the two stop colliding.
+ * A badge that stays distinguishable within a set. "Olti" and "Oltion" share an
+ * initial, and one is a prefix of the other, so no shortening separates them —
+ * in that case fall back to the whole name and let badgeFontSize shrink it.
  */
 export function badgeFor(name, allNames = []) {
-  const others = allNames.filter((n) => n !== name);
-  let label = initials(name);
-  for (let len = 2; len <= 4; len += 1) {
-    if (!others.some((other) => initials(other) === label)) break;
-    label = String(name).slice(0, len);
-    label = label[0].toUpperCase() + label.slice(1).toLowerCase();
+  const clean = String(name || '?').trim();
+  if (!clean) return '?';
+  const others = allNames.map((n) => String(n).trim()).filter((n) => n !== clean);
+  if (!others.length) return initials(clean);
+
+  // Multi-word names already read as distinct initials.
+  if (clean.split(/\s+/).filter(Boolean).length > 1) return initials(clean);
+
+  const collides = (candidate) => others.some(
+    (other) => other.slice(0, candidate.length).toLowerCase() === candidate.toLowerCase(),
+  );
+  for (let len = 1; len <= 4; len += 1) {
+    const prefix = clean.slice(0, len);
+    if (prefix.length < len) break; // ran out of name
+    if (!collides(prefix)) {
+      return len === 1 ? prefix.toUpperCase() : prefix[0].toUpperCase() + prefix.slice(1).toLowerCase();
+    }
   }
-  return label;
+  return clean;
+}
+
+/** Keep a long badge inside its tile. */
+export function badgeFontSize(label, base = 2.2) {
+  const length = String(label).length;
+  if (length <= 2) return `${base}rem`;
+  if (length <= 4) return `${base * 0.62}rem`;
+  return `${base * 0.42}rem`;
 }
 
 export function escapeHtml(input) {

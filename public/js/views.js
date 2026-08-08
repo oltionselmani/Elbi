@@ -1,4 +1,4 @@
-import { $, el, clear, formatTime, formatRuntime, formatBytes, qualityLabel, toast, hashColor, badgeFor } from './util.js';
+import { $, el, clear, formatTime, formatRuntime, formatBytes, qualityLabel, toast, hashColor, badgeFor, badgeFontSize } from './util.js';
 import { api, streamUrl } from './api.js';
 import {
   state, playablesOf, progressFor, resumePointFor, continueWatching, allGenres, searchTitles,
@@ -921,9 +921,10 @@ export function renderProfileList(host, onPick, highlightId = null) {
   clear(host);
   const names = state.profiles.map((p) => p.name);
   for (const profile of state.profiles) {
+    const label = badgeFor(profile.name, names);
     const face = el('div.profile__face', {
-      style: { background: profile.color || hashColor(profile.name) },
-      text: badgeFor(profile.name, names),
+      style: { background: profile.color || hashColor(profile.name), fontSize: badgeFontSize(label) },
+      text: label,
     });
     const node = el('button.profile', {
       type: 'button',

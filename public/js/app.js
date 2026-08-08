@@ -1,4 +1,4 @@
-import { $, $$, el, clear, debounce, toast, hashColor, badgeFor, formatBytes } from './util.js';
+import { $, $$, el, clear, debounce, toast, hashColor, badgeFor, badgeFontSize, formatBytes } from './util.js';
 import { api, setUnauthorizedHandler } from './api.js';
 import {
   state, refresh, subscribe, savedProfileId, rememberProfile, forgetProfile,
@@ -69,7 +69,9 @@ function updateChrome() {
   const profile = state.profiles.find((p) => p.id === state.activeProfile);
   const avatar = $('#profileBtn');
   if (profile) {
-    avatar.textContent = badgeFor(profile.name, state.profiles.map((p) => p.name));
+    const label = badgeFor(profile.name, state.profiles.map((p) => p.name));
+    avatar.textContent = label;
+    avatar.style.fontSize = badgeFontSize(label, 0.95);
     avatar.style.background = profile.color || hashColor(profile.name);
     avatar.title = profile.name;
   }
@@ -281,6 +283,7 @@ function openProfileMenu() {
         style: {
           background: profile.color || hashColor(profile.name),
           borderColor: profile.id === state.activeProfile ? '#fff' : 'transparent',
+          fontSize: badgeFontSize(badgeFor(profile.name, state.profiles.map((p) => p.name))),
         },
         text: badgeFor(profile.name, state.profiles.map((p) => p.name)),
       }),
@@ -308,6 +311,7 @@ function openProfileManager() {
     }),
     el('div.profiles', {}, state.profiles.map((profile) => {
       const isActive = profile.id === state.activeProfile;
+      const badge = badgeFor(profile.name, state.profiles.map((p) => p.name));
       return el('button.profile', {
         type: 'button',
         onclick: async () => {
@@ -322,8 +326,9 @@ function openProfileManager() {
           style: {
             background: profile.color || hashColor(profile.name),
             borderColor: isActive ? '#fff' : 'transparent',
+            fontSize: badgeFontSize(badge),
           },
-          text: badgeFor(profile.name, state.profiles.map((p) => p.name)),
+          text: badge,
         }),
         el('div.profile__name', { text: profile.name }),
         isActive ? el('div.profile__hint', { text: 'watching now' }) : null,

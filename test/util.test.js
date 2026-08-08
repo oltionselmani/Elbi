@@ -6,6 +6,31 @@ import {
   qualityLabel, playability, formatBytes, slug, mimeFor,
 } from '../src/server/util.js';
 
+/**
+ * Mirrors badgeFor in public/js/util.js. The client bundle is browser-only
+ * (it touches document), so the rule is pinned here rather than imported.
+ */
+function badgeFor(name, allNames = []) {
+  const clean = String(name || '?').trim();
+  if (!clean) return '?';
+  const others = allNames.map((n) => String(n).trim()).filter((n) => n !== clean);
+  if (!others.length) return clean[0].toUpperCase();
+  if (clean.split(/\s+/).filter(Boolean).length > 1) {
+    return clean.split(/\s+/).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
+  }
+  const collides = (candidate) => others.some(
+    (other) => other.slice(0, candidate.length).toLowerCase() === candidate.toLowerCase(),
+  );
+  for (let len = 1; len <= 4; len += 1) {
+    const prefix = clean.slice(0, len);
+    if (prefix.length < len) break;
+    if (!collides(prefix)) {
+      return len === 1 ? prefix.toUpperCase() : prefix[0].toUpperCase() + prefix.slice(1).toLowerCase();
+    }
+  }
+  return clean;
+}
+
 test('parseFilename pulls a clean name, year and resolution out of release names', () => {
   const a = parseFilename('The.Quiet.Harbour.2014.1080p.BluRay.x264-GROUP.mkv');
   assert.equal(a.name, 'The Quiet Harbour');
@@ -122,4 +147,23 @@ test('resuming rewinds a few seconds, without ever going negative', () => {
 
   // A missing setting falls back to 5 rather than NaN.
   assert.equal(resumePoint(600, undefined), 595);
+});
+
+test('profile badges stay distinct across the household', () => {
+  const roster = ['Olti', 'Elbi', 'Oltion', 'Elbasana'];
+  const badges = roster.map((name) => badgeFor(name, roster));
+
+  // Every name must be tellable apart at a glance.
+  assert.equal(new Set(badges).size, roster.length, `collision in ${badges.join(', ')}`);
+
+  // "Olti" is a prefix of "Oltion", so neither can be shortened — both show in full.
+  assert.equal(badgeFor('Olti', roster), 'Olti');
+  assert.equal(badgeFor('Oltion', roster), 'Oltion');
+  // "Elbi" and "Elbasana" diverge at the third letter.
+  assert.equal(badgeFor('Elbi', roster), 'Elbi');
+  assert.equal(badgeFor('Elbasana', roster), 'Elba');
+
+  // A name that shares nothing keeps a single letter.
+  assert.equal(badgeFor('Zara', ['Zara', 'Olti']), 'Z');
+  assert.equal(badgeFor('Ada Lovelace', ['Ada Lovelace', 'Alan Turing']), 'AL');
 });

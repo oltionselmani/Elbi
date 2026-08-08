@@ -329,6 +329,9 @@ function showTrack(track, { quiet = false } = {}) {
   }
   track.mode = 'showing';
   rememberSubtitle(session.title.id, track.label);
+  const wasLifted = cuesLifted;
+  cuesLifted = null;
+  setTimeout(() => liftCues(wasLifted ?? true), 80);
   // Cues only exist once the track is no longer disabled, so any pending
   // timing offset has to be re-applied here rather than at load time.
   setTimeout(() => applySubtitleOffset(session.subOffset || 0, true), 60);
@@ -363,6 +366,13 @@ function applySubtitleOffset(seconds, silent = false) {
       cue.endTime = end;
     } catch { /* some cue kinds are read-only; skip them */ }
   }
+  // Chrome keeps painting the old cue boxes after their times are rewritten;
+  // cycling the track's mode forces it to lay the active cues out again.
+  if (track) {
+    track.mode = 'hidden';
+    track.mode = 'showing';
+  }
+
   const readout = document.getElementById('subOffsetLabel');
   if (readout) {
     readout.textContent = `${session.subOffset > 0 ? '+' : ''}${session.subOffset.toFixed(2)}s`;
@@ -867,12 +877,31 @@ function hideError() {
   dom.error.hidden = true;
 }
 
+
+/**
+ * Lift the cues clear of the control bar while it is on screen. VTTCue.line
+ * counts lines from the bottom when negative, which is the only portable way
+ * to move cues — ::cue cannot position them.
+ */
+let cuesLifted = null;
+function liftCues(lifted) {
+  if (cuesLifted === lifted) return;
+  cuesLifted = lifted;
+  const track = showingTrack();
+  if (!track?.cues) return;
+  for (const cue of track.cues) {
+    try { cue.line = lifted ? -4 : 'auto'; } catch { /* not a VTTCue */ }
+  }
+}
+
 function showUi() {
   dom.root.classList.remove('is-idle');
+  liftCues(true);
   clearTimeout(session.idleTimer);
   session.idleTimer = setTimeout(() => {
     if (!dom.video.paused && !session.scrubbing && !anyMenuOpen()) {
       dom.root.classList.add('is-idle');
+      liftCues(false);
       closeMenus();
     }
   }, 2800);
@@ -891,9 +920,14 @@ function closeMenus() {
 // ---------------------------------------------------------------------------
 // double-tap seeking
 
+/** How long a second tap still counts as a double. The single-tap fallback
+ *  waits longer than this, so a slow double-click never fires play/pause first. */
+const TAP_WINDOW_MS = 320;
+const SINGLE_TAP_MS = TAP_WINDOW_MS + 60;
+
 function handleZoneTap(zone, event) {
   const now = performance.now();
-  const isDouble = now - session.lastTap.time < 320 && session.lastTap.zone === zone;
+  const isDouble = now - session.lastTap.time < TAP_WINDOW_MS && session.lastTap.zone === zone;
 
   if (isDouble) {
     clearTimeout(session.tapTimer);
@@ -920,7 +954,7 @@ function handleZoneTap(zone, event) {
       togglePlay();
     }
     session.seekBurst.amount = 0;
-  }, 260);
+  }, SINGLE_TAP_MS);
 }
 
 /** Accumulate repeated taps the way mobile players do: -5, -10, -15… */
@@ -928,6 +962,10 @@ function showRipple(zone, amount, event) {
   const node = dom.zones.querySelector(zone === 'back' ? '.zone--left' : '.zone--right');
   if (!node) return;
 
+  // Clear the pending reset *before* the object is replaced — swapping
+  // direction mid-burst used to orphan the old timer, which then fired later
+  // and wiped a counter that was still being added to.
+  clearTimeout(session.seekBurst.timer);
   if (session.seekBurst.zone === zone) session.seekBurst.amount += amount;
   else session.seekBurst = { zone, amount, timer: null };
 
@@ -938,7 +976,6 @@ function showRipple(zone, amount, event) {
   void node.offsetWidth; // restart the CSS animation
   node.classList.add('is-hit');
 
-  clearTimeout(session.seekBurst.timer);
   session.seekBurst.timer = setTimeout(() => {
     session.seekBurst = { zone: null, amount: 0, timer: null };
     node.classList.remove('is-hit');
