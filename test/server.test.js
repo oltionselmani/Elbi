@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import http from 'node:http';
 
 /**
  * End-to-end exercise of the real HTTP server against a throwaway data dir.
@@ -149,6 +150,57 @@ test('rejects a chunk written at the wrong offset', async () => {
   assert.equal(bad.status, 409);
   assert.equal(bad.body.received, 10, 'the client is told where to resume from');
   await call('DELETE', `/api/uploads/${uploadId}`);
+});
+
+/**
+ * The failure this guards against is a silent one: a client that drops
+ * mid-chunk used to leave bytes on disk that the server had not counted, so
+ * the resume offset was stale, the re-sent stretch was appended a second time,
+ * and the completed "movie" was longer than the file that was uploaded.
+ */
+test('an upload interrupted mid-chunk resumes without duplicating bytes', async () => {
+  const TOTAL = 96 * 1024;
+  const payload = Buffer.alloc(TOTAL);
+  for (let i = 0; i < TOTAL; i += 1) payload[i] = i % 251;
+
+  const start = await call('POST', '/api/uploads', { filename: 'interrupted.mp4', size: TOTAL });
+  const uploadId = start.body.id;
+  const sent = 40 * 1024;
+
+  // Announce a large chunk, send part of it, then hang up.
+  await new Promise((resolve) => {
+    const req = http.request({
+      host: '127.0.0.1',
+      port: server.address().port,
+      method: 'PUT',
+      path: `/api/uploads/${uploadId}?offset=0`,
+      headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(TOTAL) },
+    });
+    req.on('error', () => resolve());
+    req.write(payload.subarray(0, sent), () => setTimeout(() => { req.destroy(); resolve(); }, 100));
+  });
+  await new Promise((r) => setTimeout(r, 200));
+
+  const status = await call('GET', `/api/uploads/${uploadId}`);
+  const resumeAt = status.body.received;
+  assert.equal(resumeAt, sent, 'the server must count the bytes that actually landed');
+
+  // Finishing now must be refused — the file is genuinely short.
+  const early = await call('POST', `/api/uploads/${uploadId}/complete`, { title: 'Interrupted' });
+  assert.equal(early.status, 400, 'a short upload cannot be completed');
+
+  await call('PUT', `/api/uploads/${uploadId}?offset=${resumeAt}`, payload.subarray(resumeAt));
+  const done = await call('POST', `/api/uploads/${uploadId}/complete`, { title: 'Interrupted' });
+  assert.equal(done.status, 201);
+
+  assert.equal(done.body.title.sources[0].size, TOTAL, 'the registered source must report the true size');
+
+  const uploadsDir = path.join(process.env.ELBI_MEDIA_DIR, 'uploads');
+  const stored = (await fsp.readdir(uploadsDir)).find((f) => f.startsWith('interrupted'));
+  assert.ok(stored, 'the finished upload should be in the media folder');
+  const bytes = await fsp.readFile(path.join(uploadsDir, stored));
+  assert.equal(bytes.length, TOTAL, 'the stored file must be exactly the size that was uploaded');
+  assert.ok(bytes.equals(payload), 'the stored bytes must match what was sent');
 });
 
 test('refuses to accept a non-video upload', async () => {

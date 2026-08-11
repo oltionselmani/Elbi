@@ -79,7 +79,10 @@ const server = http.createServer(async (req, res) => {
     return fail(res, 404, 'Not found');
   } catch (err) {
     const status = err?.status && Number.isInteger(err.status) ? err.status : 500;
-    if (status >= 500) console.error('[elbi]', req.method, url.pathname, err);
+    // A browser hanging up mid-upload or mid-seek is routine, not a fault.
+    const clientHungUp = ['ECONNRESET', 'EPIPE', 'ERR_STREAM_PREMATURE_CLOSE'].includes(err?.code)
+      || err?.message === 'aborted';
+    if (status >= 500 && !clientHungUp) console.error('[elbi]', req.method, url.pathname, err);
     if (!res.headersSent) {
       const payload = { error: err?.message || 'Server error' };
       // Fields the client needs in order to recover (e.g. where to resume an upload).

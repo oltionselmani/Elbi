@@ -69,17 +69,24 @@ export async function appendChunk(uploadId, offset, req) {
   }
 
   session.writing = true;
-  let written = 0;
   try {
     const out = fs.createWriteStream(partPath(uploadId), { flags: 'a' });
-    req.on('data', (chunk) => { written += chunk.length; });
     await pipeline(req, out);
   } finally {
+    // The file on disk is the only honest record of how far we got.
+    //
+    // Counting bytes off the request instead meant an interrupted chunk was
+    // never counted at all: the client dropped mid-transfer, pipeline threw,
+    // and `received` stayed where it was — while the bytes that *did* arrive
+    // were already appended to the .part file. The client then resumed from a
+    // stale offset and re-sent that stretch, welding a duplicated run into the
+    // middle of the movie. Worse, the final size check compared the same bad
+    // in-memory tally against the declared size, agreed with itself, and called
+    // the corrupt file complete.
+    session.received = await partSize(uploadId);
+    session.updatedAt = Date.now();
     session.writing = false;
   }
-
-  session.received += written;
-  session.updatedAt = Date.now();
 
   if (session.size && session.received > session.size) {
     await abortUpload(uploadId);
@@ -88,9 +95,18 @@ export async function appendChunk(uploadId, offset, req) {
   return session;
 }
 
+/** Bytes currently held for an upload, straight from the filesystem. */
+async function partSize(uploadId) {
+  const stat = await fsp.stat(partPath(uploadId)).catch(() => null);
+  return stat ? stat.size : 0;
+}
+
 /** Move the finished .part into the media library under a unique final name. */
 export async function finishUpload(uploadId) {
   const session = getUpload(uploadId);
+  // Measure the file rather than trusting the running tally, so a mismatch is
+  // caught here instead of being discovered later as an unplayable movie.
+  session.received = await partSize(uploadId);
   if (session.size && session.received !== session.size) {
     throw Object.assign(
       new Error(`Incomplete upload: ${session.received} of ${session.size} bytes`),
