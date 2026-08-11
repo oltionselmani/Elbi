@@ -149,6 +149,38 @@ below for that.
 
 ---
 
+## How it looks
+
+The design is a projection booth rather than a catalogue — this is your screening room,
+not a streaming company, so the apparatus is on show: a warm lamp thrown across the
+billboard, fine film grain over the whole room, and cards that catch the light on hover.
+
+Three typefaces, and which one you get is a rule rather than a whim:
+
+| Voice | Face | Used for |
+|---|---|---|
+| Marquee | **Bebas Neue** | the wordmark, titles, headings, profile names |
+| Prose | **IBM Plex Sans** | anything you actually read |
+| Instrument | **IBM Plex Mono** | anything *measured* — timecodes, resolutions, frame rates, file sizes |
+
+That last rule is the one that makes the interface feel built rather than styled: a
+runtime and a frame rate are readings off an instrument, so they are set like readings.
+
+The palette commits to dark on purpose, with one bold colour spent in a single place —
+`#ff4d2e`, the projector lamp. Semantic colours (good, warning, error) are kept clear of
+it so a red button never reads as an alarm.
+
+All three faces are SIL Open Font Licence and ship in `public/fonts` as 144 KB of woff2.
+Nothing is fetched from a font CDN: Elbi has to work with the network switched off, and a
+webfont that 404s offline would silently fall back to a system face.
+
+Row headings carry a small monospace note stating something true about the row — how many
+titles and files, how many episodes, how many seconds Continue Watching rewinds. Titles
+with no artwork are not blank plates: they get their initial set large on a tint derived
+from the name, so a library of unposterd files still reads as a library.
+
+---
+
 ## Which files actually play?
 
 This is the one thing worth understanding before you upload a library, and Elbi is honest

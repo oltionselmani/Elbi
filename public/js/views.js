@@ -1,4 +1,4 @@
-import { $, el, clear, formatTime, formatRuntime, formatBytes, qualityLabel, toast, hashColor, badgeFor, badgeFontSize } from './util.js';
+import { $, el, clear, formatTime, formatRuntime, formatBytes, qualityLabel, toast, hashColor, badgeFor, badgeFontSize, nameFontSize } from './util.js';
 import { api, streamUrl } from './api.js';
 import {
   state, playablesOf, progressFor, resumePointFor, continueWatching, allGenres, searchTitles,
@@ -62,7 +62,14 @@ export function titleCard(title, { poster = false, item = null, showProgress = t
  * (archive.org, anything you paste in) fail often enough to matter.
  */
 function artBox(url, label) {
-  const box = el('div.card__art', {}, [el('div.card__fallback', { text: label })]);
+  // The fallback is a designed state, not an absence: the title's initial set
+  // huge behind its name, on a tint derived from the name itself.
+  const fallback = el('div.card__fallback', {
+    'data-initial': String(label || '?').trim()[0]?.toUpperCase() || '?',
+    'aria-hidden': 'true',
+    style: { '--tint': hashColor(label) },
+  });
+  const box = el('div.card__art', {}, [fallback]);
   if (url) {
     box.append(el('img.card__img', {
       src: imageSrc(url),
@@ -156,6 +163,7 @@ export function renderBrowse() {
 
   const resume = continueWatching();
   if (resume.length) {
+    const rewind = Number(state.settings?.resumeRewind) || 0;
     host.append(row(
       'Continue watching',
       resume.map(({ title, item, entry }) => {
@@ -166,26 +174,37 @@ export function renderBrowse() {
         );
         return card;
       }),
+      { hint: rewind ? `picks up ${rewind}s before you stopped` : 'picks up where you stopped' },
     ));
   }
 
   const myList = state.myList.map(titleById).filter(Boolean);
-  if (myList.length) host.append(row('My list', myList.map((t) => titleCard(t))));
+  if (myList.length) {
+    const who = state.profiles.find((p) => p.id === state.activeProfile)?.name;
+    host.append(row('My list', myList.map((t) => titleCard(t)), { hint: who ? `saved by ${who}` : '' }));
+  }
 
   const recent = [...state.titles].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0)).slice(0, 20);
-  host.append(row('Recently added', recent.map((t) => titleCard(t))));
+  const files = state.titles.reduce((n, t) => n + t.sourceCount, 0);
+  host.append(row('Recently added', recent.map((t) => titleCard(t)), {
+    hint: `${state.titles.length} titles · ${files} files`,
+  }));
 
   const offline = state.titles.filter(anyOffline);
   if (offline.length) {
-    host.append(row('Available offline', offline.map((t) => titleCard(t)), { hint: 'Plays with no network' }));
+    host.append(row('Available offline', offline.map((t) => titleCard(t)), { hint: 'plays with no network' }));
   }
 
   const series = state.titles.filter((t) => t.type === 'series');
-  if (series.length) host.append(row('Series', series.map((t) => titleCard(t))));
+  if (series.length) {
+    const episodes = series.reduce((n, t) => n + t.episodeCount, 0);
+    host.append(row('Series', series.map((t) => titleCard(t)), { hint: `${episodes} episodes` }));
+  }
 
   const free = state.titles.filter((t) => t.origin === 'archive.org');
   if (free.length) {
-    host.append(row('Streaming — nothing to download', free.map((t) => titleCard(t, { poster: true })), { poster: true }));
+    host.append(row('Streaming — nothing to download', free.map((t) => titleCard(t, { poster: true })),
+      { poster: true, hint: 'public domain · internet archive' }));
   }
 
   for (const genre of allGenres().slice(0, 8)) {
@@ -196,7 +215,7 @@ export function renderBrowse() {
   const noFile = state.titles.filter((t) => !hasPlayableSource(t));
   if (noFile.length) {
     host.append(row('Waiting for a video file', noFile.map((t) => titleCard(t)), {
-      hint: 'Open one and add a file or URL',
+      hint: 'open one and add a file or URL',
     }));
   }
 }
@@ -223,12 +242,11 @@ function renderHero(title) {
   if (best?.height) meta.push(el('span.pill', { text: qualityLabel(best.height) }));
   if (best?.fps) meta.push(el('span.pill', { text: `${Math.round(best.fps)} fps` }));
 
-  return el('section.hero', {}, [
+  const hero = el('section.hero', {}, [
     el('div.hero__art', art
       ? { style: { backgroundImage: `url("${cssUrl(imageSrc(art))}")` } }
-      // No artwork yet: a deterministic wash beats a black rectangle.
-      : { style: { background: `linear-gradient(115deg, ${hashColor(title.name)}, #101018 68%)` } }),
-    art ? null : el('div.hero__watermark', { text: title.name, 'aria-hidden': 'true' }),
+      // No artwork: let the lamp carry it rather than faking a poster.
+      : { style: { background: `linear-gradient(118deg, ${hashColor(title.name)}, #08080c 72%)` } }),
     el('div.hero__inner', {}, [
       el('h1.hero__title', { text: title.name }),
       el('div.hero__meta', {}, meta),
@@ -245,6 +263,8 @@ function renderHero(title) {
       ]),
     ]),
   ]);
+  if (!art) hero.classList.add('hero--bare');
+  return hero;
 }
 
 function emptyLibrary() {
@@ -354,7 +374,7 @@ function detailContent(title, focusEpisodeId = null) {
 
   const hero = el('div.detail__hero', art
     ? { style: { backgroundImage: `url("${cssUrl(imageSrc(art))}")` } }
-    : { style: { background: `linear-gradient(115deg, ${hashColor(title.name)}, #101018 72%)` } }, [
+    : { style: { background: `linear-gradient(118deg, ${hashColor(title.name)}, #0d0d13 74%)` } }, [
     el('div.detail__heroin', {}, [
       el('h1', { text: title.name, style: { fontSize: 'clamp(1.4rem,3.4vw,2.4rem)' } }),
       el('div.hero__meta', {}, meta),
@@ -919,12 +939,13 @@ export function openDownloads() {
 
 export function renderProfileList(host, onPick, highlightId = null) {
   clear(host);
-  const names = state.profiles.map((p) => p.name);
   for (const profile of state.profiles) {
-    const label = badgeFor(profile.name, names);
     const face = el('div.profile__face', {
-      style: { background: profile.color || hashColor(profile.name), fontSize: badgeFontSize(label) },
-      text: label,
+      style: {
+        background: profile.color || hashColor(profile.name),
+        fontSize: nameFontSize(profile.name),
+      },
+      text: profile.name,
     });
     const node = el('button.profile', {
       type: 'button',

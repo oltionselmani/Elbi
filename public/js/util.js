@@ -158,6 +158,17 @@ export function badgeFontSize(label, base = 2.2) {
   return `${base * 0.42}rem`;
 }
 
+/**
+ * Profile tiles show the whole name rather than initials — "Olti" and
+ * "Oltion" are unreadable shortened, and the full word is the identity.
+ */
+export function nameFontSize(name) {
+  const length = String(name).length;
+  if (length <= 4) return 'clamp(1.5rem, 4.4vw, 2.1rem)';
+  if (length <= 6) return 'clamp(1.15rem, 3.4vw, 1.6rem)';
+  return 'clamp(.9rem, 2.7vw, 1.25rem)';
+}
+
 export function escapeHtml(input) {
   return String(input).replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]

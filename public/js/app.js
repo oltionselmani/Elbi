@@ -1,4 +1,4 @@
-import { $, $$, el, clear, debounce, toast, hashColor, badgeFor, badgeFontSize, formatBytes } from './util.js';
+import { $, $$, el, clear, debounce, toast, hashColor, badgeFor, badgeFontSize, nameFontSize, formatBytes } from './util.js';
 import { api, setUnauthorizedHandler } from './api.js';
 import {
   state, refresh, subscribe, savedProfileId, rememberProfile, forgetProfile,
@@ -282,10 +282,10 @@ function openProfileMenu() {
       el('div.profile__face', {
         style: {
           background: profile.color || hashColor(profile.name),
-          borderColor: profile.id === state.activeProfile ? '#fff' : 'transparent',
-          fontSize: badgeFontSize(badgeFor(profile.name, state.profiles.map((p) => p.name))),
+          borderColor: profile.id === state.activeProfile ? 'rgba(255,255,255,.7)' : 'transparent',
+          fontSize: nameFontSize(profile.name),
         },
-        text: badgeFor(profile.name, state.profiles.map((p) => p.name)),
+        text: profile.name,
       }),
       el('div.profile__name', { text: profile.name }),
     ]))),
@@ -311,7 +311,6 @@ function openProfileManager() {
     }),
     el('div.profiles', {}, state.profiles.map((profile) => {
       const isActive = profile.id === state.activeProfile;
-      const badge = badgeFor(profile.name, state.profiles.map((p) => p.name));
       return el('button.profile', {
         type: 'button',
         onclick: async () => {
@@ -325,10 +324,10 @@ function openProfileManager() {
         el('div.profile__face', {
           style: {
             background: profile.color || hashColor(profile.name),
-            borderColor: isActive ? '#fff' : 'transparent',
-            fontSize: badgeFontSize(badge),
+            borderColor: isActive ? 'rgba(255,255,255,.7)' : 'transparent',
+            fontSize: nameFontSize(profile.name),
           },
-          text: badge,
+          text: profile.name,
         }),
         el('div.profile__name', { text: profile.name }),
         isActive ? el('div.profile__hint', { text: 'watching now' }) : null,

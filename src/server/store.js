@@ -12,10 +12,10 @@ const DB_FILE = () => path.join(config.dataDir, 'library.json');
  * random, so watch history survives a wiped library.json.
  */
 export const PROFILES = [
-  { id: 'p_olti', name: 'Olti', color: '#e50914' },
-  { id: 'p_elbi', name: 'Elbi', color: '#1f8fff' },
-  { id: 'p_oltion', name: 'Oltion', color: '#46d369' },
-  { id: 'p_elbasana', name: 'Elbasana', color: '#a34bff' },
+  { id: 'p_olti', name: 'Olti', color: '#8f3a24' },
+  { id: 'p_elbi', name: 'Elbi', color: '#2c5f66' },
+  { id: 'p_oltion', name: 'Oltion', color: '#7b6432' },
+  { id: 'p_elbasana', name: 'Elbasana', color: '#5b3a63' },
 ];
 
 function emptyDb() {

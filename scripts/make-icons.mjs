@@ -71,14 +71,14 @@ function draw(size) {
       let [r, g, b, a] = [0, 0, 0, 0];
 
       if (inRounded(x, y, 0, 0, size, size, radius)) {
-        [r, g, b, a] = [11, 11, 15, 255];
+        [r, g, b, a] = [8, 8, 12, 255];
       }
       if (inRounded(x, y, inner.x, inner.y, inner.w, inner.h, inner.r)) {
-        // Diagonal gradient from #ff2733 to #a5060e.
+        // Diagonal gradient from the lamp highlight #ff7a4a to its deep #b81d13.
         const t = ((x - inner.x) / inner.w + (y - inner.y) / inner.h) / 2;
-        r = Math.round(255 + (165 - 255) * t);
-        g = Math.round(39 + (6 - 39) * t);
-        b = Math.round(51 + (14 - 51) * t);
+        r = Math.round(255 + (184 - 255) * t);
+        g = Math.round(122 + (29 - 122) * t);
+        b = Math.round(74 + (19 - 74) * t);
         a = 255;
       }
       // Vertical bar (the "l" of Elbi).

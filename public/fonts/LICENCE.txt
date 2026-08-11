@@ -1,0 +1,12 @@
+Fonts bundled in this folder
+===========================
+
+Bebas Neue         SIL Open Font Licence 1.1 — Ryoichi Tsunekawa (Dharma Type)
+IBM Plex Sans      SIL Open Font Licence 1.1 — IBM
+IBM Plex Mono      SIL Open Font Licence 1.1 — IBM
+
+They ship with Elbi rather than loading from a font CDN because Elbi has to
+work with the network switched off: a webfont that fails to load offline would
+silently fall back to a system face and the interface would change shape.
+
+Full licence text: https://openfontlicense.org
