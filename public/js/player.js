@@ -37,6 +37,74 @@ const session = {
   sleep: null,         // { mode, endsAt?, tick } sleep timer
 };
 
+/**
+ * Every key the player answers to, and what it does.
+ *
+ * This table is the single source of truth: `onKeydown` and the help overlay
+ * both read from it, and a test asserts the two never drift apart. `handles`
+ * lists the raw `event.key` values; `show` is how the key is drawn on screen.
+ */
+export const SHORTCUTS = [
+  {
+    group: 'Playing',
+    items: [
+      { handles: [' ', 'k'], show: ['Space', 'K'], label: 'Play or pause' },
+      { handles: ['f'], show: ['F'], label: 'Fullscreen' },
+      { handles: ['i'], show: ['I'], label: 'Picture in picture' },
+      { handles: ['Escape'], show: ['Esc'], label: 'Leave fullscreen, then close the player' },
+    ],
+  },
+  {
+    group: 'Moving around',
+    items: [
+      { handles: ['ArrowLeft', 'ArrowRight'], show: ['←', '→'], label: 'Seek by your chosen step' },
+      { handles: ['j', 'l'], show: ['J', 'L'], label: 'Ten seconds back or forward' },
+      { handles: [',', '.'], show: [',', '.'], label: 'A single frame either way — pauses first' },
+      { handles: ['Home', 'End'], show: ['Home', 'End'], label: 'To the very start, or the very end' },
+      {
+        handles: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
+        show: ['0', '…', '9'],
+        label: 'Jump to that tenth of the runtime',
+      },
+    ],
+  },
+  {
+    group: 'Sound',
+    items: [
+      { handles: ['ArrowUp', 'ArrowDown'], show: ['↑', '↓'], label: 'Volume up or down' },
+      { handles: ['m'], show: ['M'], label: 'Mute' },
+    ],
+  },
+  {
+    group: 'Speed',
+    items: [
+      { handles: ['<', '>'], show: ['<', '>'], label: 'Slower or faster, a quarter at a time' },
+    ],
+  },
+  {
+    group: 'Subtitles',
+    items: [
+      { handles: ['c'], show: ['C'], label: 'Next subtitle track, or off' },
+      { handles: ['[', ']'], show: ['[', ']'], label: 'Nudge the timing a quarter second' },
+    ],
+  },
+  {
+    group: 'This title',
+    items: [
+      { handles: ['q'], show: ['Q'], label: 'Switch quality' },
+      { handles: ['n'], show: ['N'], label: 'Next episode' },
+      { handles: ['I'], show: ['Shift', 'I'], label: 'Mark the intro — once at its start, once at its end' },
+    ],
+  },
+  {
+    group: 'Telling you things',
+    items: [
+      { handles: ['s'], show: ['S'], label: 'Stats for nerds' },
+      { handles: ['?'], show: ['?'], label: 'This list' },
+    ],
+  },
+];
+
 function cache() {
   if (dom.root) return dom;
   Object.assign(dom, {
@@ -77,6 +145,9 @@ function cache() {
     stats: $('#statsPanel'),
     statsBody: $('#statsBody'),
     statsClose: $('#statsClose'),
+    keys: $('#keysPanel'),
+    keysBody: $('#keysBody'),
+    keysClose: $('#keysClose'),
     skipIntro: $('#skipIntro'),
     skipIntroBar: $('#skipIntroBar'),
     sleepChip: $('#sleepChip'),
@@ -184,6 +255,8 @@ export function close() {
   dom.root.hidden = true;
   dom.upnext.hidden = true;
   dom.skipIntro.hidden = true;
+  if (dom.keys) dom.keys.hidden = true;
+  dom.stats.hidden = true;
   document.body.classList.remove('is-playing');
   setFaux(false);
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -720,6 +793,10 @@ function buildMoreMenu() {
   panel.append(el('div.menu__sep'));
   panel.append(el('button.menu__item', {
     type: 'button',
+    onclick: () => { closeMenus(); toggleShortcuts(true); },
+  }, [el('span', { text: 'Keyboard shortcuts' }), el('small', { text: '?' })]));
+  panel.append(el('button.menu__item', {
+    type: 'button',
     onclick: () => { closeMenus(); toggleStats(); },
   }, [el('span', { text: 'Stats for nerds' }), el('small', { text: 'S' })]));
 
@@ -1072,6 +1149,48 @@ function applyLocalProgress({ titleId, episodeId, position, duration, sourceId }
   const finished = duration > 0 && position >= Math.max(duration * 0.96, duration - 90);
   state.progress[key] = { position, duration, sourceId, finished, updatedAt: Date.now() };
   emit();
+}
+
+// ---------------------------------------------------------------------------
+// keyboard help
+
+/** Show, hide, or flip the shortcut list. */
+function toggleShortcuts(force) {
+  const panel = dom.keys;
+  if (!panel) return;
+  const show = force === undefined ? panel.hidden : force;
+  if (show && !panel.dataset.built) {
+    renderShortcuts();
+    panel.dataset.built = '1';
+  }
+  panel.hidden = !show;
+  if (show) showUi();
+}
+
+function shortcutsOpen() {
+  return Boolean(dom.keys && !dom.keys.hidden);
+}
+
+function renderShortcuts() {
+  const body = dom.keysBody;
+  clear(body);
+  for (const { group, items } of SHORTCUTS) {
+    body.append(el('h4.keys__group', { text: group }));
+    const list = el('dl.keys__list');
+    for (const item of items) {
+      const combo = el('dt');
+      item.show.forEach((token, i) => {
+        // A bare "…" is a range marker between two keys, not a key of its own.
+        if (token === '…') combo.append(el('span.keys__join', { text: '…' }));
+        else combo.append(el('kbd', { text: token }));
+        if (i < item.show.length - 1 && token !== '…' && item.show[i + 1] !== '…') {
+          combo.append(el('span.keys__join', { text: '/' }));
+        }
+      });
+      list.append(combo, el('dd', { text: item.label }));
+    }
+    body.append(list);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1437,6 +1556,7 @@ function bindEvents() {
   dom.btnNext.addEventListener('click', () => playNext());
   dom.back.addEventListener('click', close);
   dom.statsClose.addEventListener('click', () => { dom.stats.hidden = true; });
+  dom.keysClose.addEventListener('click', () => toggleShortcuts(false));
   dom.errorClose.addEventListener('click', close);
   dom.errorSwitch.addEventListener('click', () => {
     const next = (session.sourceIndex + 1) % session.sources.length;
@@ -1555,10 +1675,13 @@ function onKeydown(event) {
     case 'c': cycleSubtitles(); break;
     case 'q': cycleQuality(); break;
     case 'n': playNext(); break;
+    case '?': toggleShortcuts(); break;
     case '[': applySubtitleOffset((session.subOffset || 0) - 0.25); break;
     case ']': applySubtitleOffset((session.subOffset || 0) + 0.25); break;
     case 'Escape':
-      if (document.fullscreenElement || faux()) toggleFullscreen();
+      // Unwind one layer at a time: the help list, then fullscreen, then out.
+      if (shortcutsOpen()) toggleShortcuts(false);
+      else if (document.fullscreenElement || faux()) toggleFullscreen();
       else close();
       break;
     case '>': video.playbackRate = Math.min(4, video.playbackRate + 0.25); flash(`Speed ${video.playbackRate}×`); break;
