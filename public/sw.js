@@ -1,11 +1,23 @@
 /* Elbi service worker — app shell caching, offline library, and range-capable
    playback of videos saved into Cache Storage. */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL_CACHE = `elbi-shell-${VERSION}`;
 const DATA_CACHE = `elbi-data-${VERSION}`;
 const VIDEO_CACHE = 'elbi-video-v1'; // unversioned: downloads must survive updates
 
+/**
+ * Everything the app needs to open with no network at all.
+ *
+ * The fonts and the app icons have to be listed explicitly rather than left to
+ * the opportunistic caching further down. On a first visit the browser asks for
+ * them while the worker is still installing — before `clients.claim()` — so the
+ * fetch handler never sees those requests and never stores them. The result was
+ * a library that opened offline in fallback system fonts, with a blank icon on
+ * the home screen, until some later online visit happened to re-request them.
+ *
+ * A test asserts this list covers every asset actually shipped in public/.
+ */
 const SHELL_ASSETS = [
   '/',
   '/browse',
@@ -21,6 +33,15 @@ const SHELL_ASSETS = [
   '/js/offline.js',
   '/manifest.webmanifest',
   '/icons/elbi.svg',
+  '/icons/elbi-192.png',
+  '/icons/elbi-512.png',
+  '/fonts/bebas-neue-400.woff2',
+  '/fonts/plex-sans-400.woff2',
+  '/fonts/plex-sans-500.woff2',
+  '/fonts/plex-sans-600.woff2',
+  '/fonts/plex-sans-700.woff2',
+  '/fonts/plex-mono-400.woff2',
+  '/fonts/plex-mono-500.woff2',
 ];
 
 self.addEventListener('install', (event) => {
