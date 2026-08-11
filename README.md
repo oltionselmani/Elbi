@@ -86,6 +86,14 @@ next one automatically and tells you why.
   `<div>` cannot go fullscreen at all, the native video presentation; and if the page is
   embedded somewhere that refuses the request, it fills the window with CSS instead of
   dead-ending.
+- **Skip intro** — mark an intro once (⋮ menu, or `Shift+I` at its first frame and again
+  at its last) and a *Skip intro* button appears over that stretch from then on, with a
+  bar showing how much of it is left. On a series, one press applies the same marker to
+  the whole season, because a show's titles run for the same seconds every week.
+- **Sleep timer** — 15 to 90 minutes, or *end of this episode*. A countdown sits in the
+  top bar; when it runs out, playback pauses, your place is saved, and you get *Keep
+  watching* or *Close player*. It runs on the wall clock, not on playback position, so
+  pausing the film doesn't pause the timer any more than it stops you falling asleep.
 - Playback speed, picture-in-picture, resume-where-you-left-off, and autoplay of the next
   episode with a countdown.
 
@@ -103,7 +111,7 @@ remux, a 1080p copy and a 720p copy and all three appear, highest first.
 | `↑` `↓` | Volume | | `C` | Cycle subtitles |
 | `0`–`9` | Jump to 0 %–90 % | | `Q` | Cycle quality |
 | `,` `.` | Previous / next frame | | `N` | Next episode |
-| `[` `]` | Nudge subtitle timing | | | |
+| `[` `]` | Nudge subtitle timing | | `⇧I` | Mark intro start / end |
 | `<` `>` | Slower / faster | | `S` | Stats for nerds |
 | `Home` `End` | Start / end | | `Esc` | Leave the player |
 
@@ -131,6 +139,52 @@ needs one of those (see *Hosting online* below).
 Adaptive streams (HLS `.m3u8`, DASH `.mpd`) can't be saved offline — they're stitched
 together from thousands of segments at playback time. Elbi says so rather than failing
 quietly.
+
+### Posters, cast and synopses
+
+Open a title and press **Find poster & details**. Elbi searches, shows you the candidates
+with their artwork, and writes the one you pick onto the title: poster, backdrop, synopsis,
+tagline, genres, runtime, director, cast, certification, and the IMDb id. A folder scan
+offers to do the same automatically for everything it just imported, and only accepts a
+match it's confident about — a wrong poster is worse than no poster.
+
+There are two providers, and **which one you get depends on whether you set a key**:
+
+| | TMDB | Wikipedia + Wikidata |
+|---|---|---|
+| Needs a key | **Yes** — `ELBI_TMDB_KEY` | No |
+| Poster size | Up to 500px wide, plus a 1280px backdrop | ~220–900px, whatever en.wikipedia hosts |
+| Certification (PG-13 etc.) | Yes | No |
+| Per-episode data | Yes | No |
+| Synopsis, genres, runtime, cast, director, IMDb id | Yes | Yes |
+
+Every TMDB endpoint answers `401` without a key, so TMDB is opt-in. Without one Elbi falls
+back to Wikipedia for the poster and synopsis and Wikidata for the structured fields, which
+needs no signup and works on a fresh checkout — the trade-off is image quality, because
+en.wikipedia hosts non-free film posters at low resolution. Get a free key at
+[themoviedb.org/settings/api](https://www.themoviedb.org/settings/api) and set
+`ELBI_TMDB_KEY`; both v3 keys and v4 read tokens work, and the key is never written to the
+library file or sent to the browser.
+
+### Subtitles from the internet — including Albanian
+
+**Find subtitles online** on any title (or the `CC` button on an episode) searches
+opensubtitles.org and attaches the track you choose. **Albanian is the default**;
+nine other languages are in the picker, and you can change the default in Settings.
+
+This needs no API key. What Elbi does to each download before it reaches the player:
+
+1. Un-gzips it — the service hands out compressed SubRip.
+2. Decodes the codepage the service declares (these files are usually CP1252 or CP1250,
+   not UTF-8) and re-encodes to UTF-8, so **ë** and **ç** arrive intact rather than as
+   mojibake. Correct UTF-8 is detected and left alone even when the declaration is wrong.
+3. Converts SubRip to WebVTT, which is the only format `<track>` understands.
+4. Strips the advertising the download site injects into the first and last cues. The
+   translator's own credit is kept — that's not an advert.
+
+Matching is by IMDb id when the title has one (which is why matching a poster first helps)
+and by name otherwise; for a series it searches by season and episode. If the free download
+quota runs out, Elbi says so instead of attaching an empty file.
 
 ### Profiles
 
@@ -237,7 +291,9 @@ Everything is an environment variable; none of them are required.
 | `ELBI_MEDIA_DIR` | `./media` | Where uploads are written and where scanning starts |
 | `ELBI_DATA_DIR` | `./data` | Library index, artwork, session secret |
 | `ELBI_SCAN_DIRS` | *(none)* | Extra folders you're allowed to scan, `:`-separated |
-| `ELBI_ALLOW_REMOTE` | `1` | Set `0` to disable the Internet Archive browser and all remote URLs |
+| `ELBI_ALLOW_REMOTE` | `1` | Set `0` to disable the Internet Archive browser, metadata lookups, subtitle search and all remote URLs |
+| `ELBI_TMDB_KEY` | *(unset)* | TMDB API key or v4 read token. Without it, posters come from Wikipedia instead |
+| `ELBI_SUBTITLE_LANG` | `alb` | Default subtitle language to search for (ISO 639-2/B; `alb` is Albanian) |
 | `ELBI_SESSION_DAYS` | `30` | How long a login lasts |
 | `ELBI_LOG` | `1` | Set `0` to silence request logging |
 
@@ -375,17 +431,25 @@ nothing that rots when you come back to it in two years.
 npm test
 ```
 
-29 tests covering filename parsing, range-request edge cases, path-traversal refusal,
-SRT→VTT conversion, the resume-rewind arithmetic, the fixed profile roster (including that
-it refuses to be added to or deleted from, and that one profile's history never leaks into
-another's), and a full server round trip: chunked upload → byte-exact streaming → folder
-scan → progress → deletion → restart.
+37 tests covering filename parsing, range-request edge cases, path-traversal refusal,
+SRT→VTT conversion, subtitle charset decoding, advert-cue stripping, subtitle-download URL
+containment, skip-intro marker validation, the resume-rewind arithmetic, the fixed profile
+roster (including that it refuses to be added to or deleted from, and that one profile's
+history never leaks into another's), and a full server round trip: chunked upload →
+byte-exact streaming → folder scan → progress → deletion → restart.
 
-The browser side was verified against real Chromium — 35 checks covering playback,
+The browser side was verified against real Chromium — 37 checks covering playback,
 double-click seeking, mid-playback quality switching, live FPS measurement, subtitle
 loading, subtitle timing offset and sizing, the profile gate, resuming five seconds before
 the stop point, and a further 9 covering offline download plus seeking with the network
 switched off.
+
+A further 25 checks drive the four newest features against the live services: a metadata
+search that returns real candidates, the poster loading as actual image bytes and rendering
+on a browse card, an Albanian track fetched from opensubtitles.org and parsed by the browser
+into 1420 separate cues with its accents intact and its advert cue gone, the skip-intro
+button appearing only inside its marked range and jumping to the right second, and the sleep
+timer counting down, pausing playback and saving your place.
 
 ---
 

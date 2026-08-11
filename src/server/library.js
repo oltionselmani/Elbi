@@ -25,6 +25,7 @@ export function playables(title) {
           season: season.number,
           episode: episode.number,
           name: episode.name || `Episode ${episode.number}`,
+          intro: episode.intro || null,
           sources: episode.sources || [],
           subtitles: episode.subtitles || [],
         });
@@ -39,6 +40,7 @@ export function playables(title) {
     season: null,
     episode: null,
     name: title.name,
+    intro: title.intro || null,
     sources: title.sources || [],
     subtitles: title.subtitles || [],
   }];
@@ -127,6 +129,15 @@ export function makeTitle(fields = {}) {
     backdrop: fields.backdrop || null,
     rating: fields.rating || '',
     runtimeMin: fields.runtimeMin ?? null,
+    tagline: fields.tagline || '',
+    cast: Array.isArray(fields.cast) ? fields.cast : [],
+    director: Array.isArray(fields.director) ? fields.director : [],
+    voteAverage: fields.voteAverage ?? null,
+    imdbId: fields.imdbId || '',
+    tmdbId: fields.tmdbId || '',
+    metadata: null,
+    // Marked intro range for a movie; episodes carry their own.
+    intro: null,
     addedAt: Date.now(),
     origin: fields.origin || 'manual',
     sources: [],
@@ -154,6 +165,7 @@ export function ensureEpisode(season, number, name) {
       name: name || `Episode ${number}`,
       overview: '',
       still: null,
+      intro: null,
       sources: [],
       subtitles: [],
     };
@@ -217,7 +229,7 @@ export async function scanFolder(dir) {
   const videos = files.filter((f) => VIDEO_EXTENSIONS.has(path.extname(f).toLowerCase()));
   const subs = files.filter((f) => SUBTITLE_EXTENSIONS.has(path.extname(f).toLowerCase()));
 
-  const report = { added: 0, skipped: 0, titles: [], unplayable: [] };
+  const report = { added: 0, skipped: 0, titles: [], newTitleIds: [], unplayable: [] };
 
   for (const file of videos.sort()) {
     if (known.has(file)) {
@@ -247,6 +259,7 @@ export async function scanFolder(dir) {
         title = makeTitle({ type: 'series', name: showName, year: info.year, origin: 'scan' });
         db.titles.push(title);
         report.titles.push(title.name);
+        report.newTitleIds.push(title.id);
       }
       const season = ensureSeason(title, ep.season);
       const episode = ensureEpisode(season, ep.episode);
@@ -263,6 +276,7 @@ export async function scanFolder(dir) {
         title.tags = info.tags;
         db.titles.push(title);
         report.titles.push(title.name);
+        report.newTitleIds.push(title.id);
       }
       title.sources.push(source);
       if (source.subtitles) title.subtitles.push(...source.subtitles);
@@ -341,6 +355,14 @@ export function publicTitle(title) {
     backdrop: title.backdrop,
     rating: title.rating,
     runtimeMin: title.runtimeMin,
+    tagline: title.tagline || '',
+    cast: title.cast || [],
+    director: title.director || [],
+    voteAverage: title.voteAverage ?? null,
+    imdbId: title.imdbId || '',
+    tmdbId: title.tmdbId || '',
+    metadata: title.metadata || null,
+    intro: title.intro || null,
     addedAt: title.addedAt,
     origin: title.origin,
     tags: title.tags || [],
@@ -356,6 +378,7 @@ export function publicTitle(title) {
         overview: episode.overview,
         still: episode.still,
         runtimeMin: episode.runtimeMin ?? null,
+        intro: episode.intro || null,
         sources: (episode.sources || []).map(publicSource),
         subtitles: (episode.subtitles || []).map(publicSubtitle),
       })),
@@ -394,6 +417,7 @@ function publicSubtitle(sub) {
     label: sub.label || 'Subtitles',
     lang: sub.lang || 'und',
     kind: sub.kind,
+    origin: sub.origin || '',
   };
 }
 

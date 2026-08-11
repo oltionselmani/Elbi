@@ -56,6 +56,23 @@ export const config = {
   // Allow proxying/streaming remote URLs (Internet Archive browser, add-by-URL).
   allowRemote: process.env.ELBI_ALLOW_REMOTE !== '0',
   sessionTtlMs: envInt('ELBI_SESSION_DAYS', 30) * 24 * 60 * 60 * 1000,
+
+  // --- metadata ------------------------------------------------------------
+  // TMDB is the better provider but every one of its endpoints 401s without a
+  // key, so it is opt-in. Without a key Elbi falls back to Wikipedia, which is
+  // keyless and still yields a poster and a synopsis for most films.
+  tmdbKey: (process.env.ELBI_TMDB_KEY || '').trim(),
+  tmdbBase: (process.env.ELBI_TMDB_BASE || 'https://api.themoviedb.org/3').replace(/\/+$/, ''),
+  tmdbImageBase: (process.env.ELBI_TMDB_IMAGE_BASE || 'https://image.tmdb.org/t/p').replace(/\/+$/, ''),
+  wikiBase: (process.env.ELBI_WIKI_BASE || 'https://en.wikipedia.org').replace(/\/+$/, ''),
+
+  // --- subtitle search -----------------------------------------------------
+  // opensubtitles' legacy REST host needs no API key. Its download links are
+  // gzipped SubRip in whatever legacy codepage the uploader used.
+  subsBase: (process.env.ELBI_SUBS_BASE || 'https://rest.opensubtitles.org').replace(/\/+$/, ''),
+  subsUserAgent: process.env.ELBI_SUBS_UA || 'TemporaryUserAgent',
+  // ISO 639-2/B code fetched by the one-click "get subtitles" button.
+  defaultSubtitleLang: (process.env.ELBI_SUBTITLE_LANG || 'alb').trim(),
 };
 
 /**

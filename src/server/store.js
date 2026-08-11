@@ -34,8 +34,29 @@ function emptyDb() {
       resumeRewind: 5,
       subtitleSize: 'medium',
       subtitleBackground: 'shadow',
+      // Offer to jump past a marked intro while it is on screen.
+      skipIntro: true,
+      // Language fetched by the one-click subtitle button (ISO 639-2/B).
+      subtitleLanguage: 'alb',
+      // Look up posters and synopses for newly imported titles.
+      autoMatchMetadata: true,
+      // Minutes preselected in the player's sleep timer menu.
+      sleepTimerMinutes: 45,
     },
   };
+}
+
+/** A marked intro range, or null when the shape is not usable. */
+export function normalizeIntro(value) {
+  if (!value || typeof value !== 'object') return null;
+  const start = Number(value.start);
+  const end = Number(value.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  const from = Math.max(0, Math.round(start * 100) / 100);
+  const to = Math.round(end * 100) / 100;
+  // A zero-length or backwards range would render a button that does nothing.
+  if (to - from < 1) return null;
+  return { start: from, end: to };
 }
 
 /** Fill in anything a hand-edited or older library.json is missing. */
@@ -53,7 +74,15 @@ function normalize(db) {
     title.seasons = Array.isArray(title.seasons) ? title.seasons : [];
     title.subtitles = Array.isArray(title.subtitles) ? title.subtitles : [];
     title.genres = Array.isArray(title.genres) ? title.genres : [];
+    title.cast = Array.isArray(title.cast) ? title.cast : [];
+    title.director = Array.isArray(title.director) ? title.director : [];
     title.type = title.type === 'series' ? 'series' : 'movie';
+    title.intro = normalizeIntro(title.intro);
+    for (const season of title.seasons) {
+      for (const episode of season.episodes || []) {
+        episode.intro = normalizeIntro(episode.intro);
+      }
+    }
   }
 
   // The roster is authoritative in code, not in the file: a library.json from

@@ -694,7 +694,7 @@ h1, h2, h3, h4 {
 }
 
 .epitem {
-  display: grid; grid-template-columns: 42px 128px 1fr auto; gap: .9rem; align-items: center;
+  display: grid; grid-template-columns: 42px 128px 1fr auto auto; gap: .9rem; align-items: center;
   padding: .65rem; border-radius: 10px; cursor: pointer;
   border: 1px solid transparent;
   transition: background .16s var(--ease), border-color .16s var(--ease);
@@ -704,6 +704,49 @@ h1, h2, h3, h4 {
 .epitem__still { aspect-ratio: 16/9; border-radius: 7px; background: var(--ink-high) center/cover; }
 .epitem__name { font-weight: 600; font-size: .92rem; }
 .epitem__desc { font-size: .78rem; color: var(--haze); }
+.epitem .iconbtn { font-family: var(--mono); font-size: .7rem; letter-spacing: .06em; }
+
+/* ── Metadata match picker ───────────────────────────────────────────────── */
+.detail__tagline {
+  font-family: var(--display); font-weight: 400;
+  font-size: 1.05rem; letter-spacing: .05em; color: var(--glow);
+  margin-bottom: .6rem;
+}
+.matchform {
+  display: grid; grid-template-columns: 1fr 7rem auto; gap: .6rem; align-items: end;
+  margin: 1rem 0 .8rem;
+}
+.matchform .field { margin: 0; }
+.matchopt {
+  display: grid; grid-template-columns: 62px 1fr; gap: .85rem; align-items: start;
+  width: 100%; text-align: left; cursor: pointer;
+  padding: .6rem; border-radius: 10px;
+  border: 1px solid var(--edge-soft); background: var(--ink-high); color: var(--paper);
+  transition: border-color .16s var(--ease), background .16s var(--ease);
+}
+.matchopt:hover { border-color: var(--lamp); background: var(--ink-raised); }
+.matchopt:disabled { opacity: .5; cursor: default; }
+.matchopt__art {
+  width: 62px; aspect-ratio: 2/3; object-fit: cover;
+  border-radius: 6px; background: var(--ink-sunk);
+}
+.matchopt__art--none {
+  display: grid; place-items: center;
+  font-family: var(--display); font-size: 1.4rem; color: var(--haze-dim);
+}
+.matchopt__text { display: grid; gap: .25rem; min-width: 0; }
+.matchopt__text strong { font-size: .95rem; }
+.matchopt__meta {
+  font-family: var(--mono); font-size: .68rem; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--haze);
+}
+.matchopt__blurb {
+  font-size: .8rem; color: var(--haze); line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+@media (max-width: 640px) {
+  .matchform { grid-template-columns: 1fr; }
+}
 
 /* ── Progress / jobs ─────────────────────────────────────────────────────── */
 .joblist { display: grid; gap: .6rem; margin-top: 1rem; }
@@ -840,7 +883,7 @@ body.is-faux-fullscreen { overflow: hidden; }
 .menu { position: relative; }
 .menu__panel {
   position: absolute; bottom: calc(100% + .6rem); right: 0;
-  min-width: 218px; max-height: 56vh; overflow-y: auto;
+  min-width: 218px; max-height: 64vh; overflow-y: auto; overscroll-behavior: contain;
   background: rgba(12, 12, 18, .96); backdrop-filter: blur(18px);
   border: 1px solid var(--edge); border-radius: 12px;
   padding: .4rem; box-shadow: var(--shadow); z-index: 6;
@@ -863,6 +906,68 @@ body.is-faux-fullscreen { overflow: hidden; }
   text-transform: uppercase; letter-spacing: .14em; color: var(--haze-dim);
 }
 .menu__sep { height: 1px; background: var(--edge); margin: .35rem 0; }
+.menu__note {
+  padding: .3rem .65rem .5rem; font-family: var(--mono); font-size: .68rem;
+  line-height: 1.5; color: var(--haze); max-width: 24ch;
+}
+
+/* ── Skip intro ──────────────────────────────────────────────────────────── */
+/* Deliberately outside .player__ui so it stays put when the chrome fades. */
+.skipintro {
+  position: absolute; z-index: 9;
+  right: clamp(.8rem, 3vw, 2.2rem); bottom: clamp(6.5rem, 16vh, 9.5rem);
+  display: inline-flex; align-items: center; gap: .7rem;
+  padding: .7rem 1.15rem; cursor: pointer;
+  font-family: var(--mono); font-size: .74rem;
+  text-transform: uppercase; letter-spacing: .16em;
+  color: var(--paper); background: rgba(10, 10, 15, .82);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, .3); border-radius: 4px;
+  box-shadow: var(--shadow);
+  animation: skip-in .26s var(--ease-out) both;
+  transition: background .16s var(--ease), border-color .16s var(--ease), transform .16s var(--ease);
+}
+.skipintro:hover { background: var(--paper); color: #14141a; border-color: var(--paper); transform: translateY(-1px); }
+.skipintro:hover .skipintro__bar { background: rgba(0, 0, 0, .2); }
+.skipintro:hover .skipintro__bar i { background: #14141a; }
+/* A wipe showing how much of the marked range is left to run. */
+.skipintro__bar {
+  width: 40px; height: 2px; background: rgba(255, 255, 255, .25);
+  border-radius: 2px; overflow: hidden;
+}
+.skipintro__bar i { display: block; height: 100%; width: 0; background: var(--lamp); transition: width .25s linear; }
+@keyframes skip-in { from { opacity: 0; transform: translateY(10px); } }
+
+/* ── Sleep timer ─────────────────────────────────────────────────────────── */
+.pill--sleep {
+  margin-left: auto; align-self: center; flex: none;
+  gap: .4rem; padding: .3rem .6rem; cursor: pointer;
+  font-family: var(--mono); color: var(--glow);
+  border-color: rgba(255, 178, 87, .4); background: rgba(0, 0, 0, .55);
+}
+.pill--sleep:hover { color: #14141a; background: var(--glow); border-color: var(--glow); }
+.pill--sleep .icon { width: 13px; height: 13px; }
+
+.sleep {
+  position: absolute; inset: 0; z-index: 12;
+  display: grid; place-items: center;
+  background: rgba(4, 4, 8, .82); backdrop-filter: blur(10px);
+  animation: fade-in .3s var(--ease-out) both;
+}
+.sleep__card {
+  display: grid; justify-items: center; gap: .7rem; text-align: center;
+  padding: 2rem 2.2rem; max-width: min(420px, 88vw);
+  background: rgba(12, 12, 18, .96); border: 1px solid var(--edge);
+  border-radius: 16px; box-shadow: var(--shadow);
+  animation: rise .32s var(--ease-out) both;
+}
+.sleep__moon { width: 34px; height: 34px; fill: var(--glow); }
+.sleep__card strong {
+  font-family: var(--display); font-weight: 400;
+  font-size: 1.5rem; letter-spacing: .06em; text-transform: uppercase;
+}
+.sleep__card .muted { font-family: var(--mono); font-size: .76rem; line-height: 1.6; }
+.sleep__card .row-gap { margin-top: .5rem; }
 
 .player__spinner { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 .player__spinner span {

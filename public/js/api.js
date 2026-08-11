@@ -93,6 +93,21 @@ export const api = {
   discover: (params, signal) => request('GET', '/api/discover', { query: params, signal }),
   discoverItem: (identifier, signal) => request('GET', `/api/discover/${encodeURIComponent(identifier)}`, { signal }),
   discoverAdd: (identifier) => request('POST', `/api/discover/${encodeURIComponent(identifier)}/add`, { body: {} }),
+
+  // Skip-intro markers. `applyTo` is 'episode' | 'season' | 'all'.
+  setIntro: (id, { intro, episodeId, applyTo }) => request('POST', `/api/titles/${id}/markers`, {
+    body: { intro, episodeId, applyTo },
+  }),
+
+  // Posters and metadata.
+  metadataStatus: () => request('GET', '/api/metadata/status'),
+  matchOptions: (id, query, signal) => request('GET', `/api/titles/${id}/match`, { query, signal }),
+  applyMatch: (id, choice) => request('POST', `/api/titles/${id}/match`, { body: choice || {} }),
+  enrichMetadata: (payload) => request('POST', '/api/metadata/enrich', { body: payload || {} }),
+
+  // Subtitle search — Albanian by default, see ELBI_SUBTITLE_LANG.
+  searchSubtitles: (params, signal) => request('GET', '/api/subsearch', { query: params, signal }),
+  fetchSubtitle: (id, payload) => request('POST', `/api/titles/${id}/subtitles/fetch`, { body: payload || {} }),
 };
 
 /**

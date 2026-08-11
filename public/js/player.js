@@ -31,6 +31,10 @@ const session = {
   resumedFrom: null,   // { stoppedAt, resumeAt } when this is a resume
   subOffset: 0,        // subtitle timing nudge, in seconds
   cueBase: new WeakMap(), // original cue times, so offsets stay absolute
+  intro: null,         // { start, end } marked intro range for this playable
+  introDismissed: false,
+  marking: null,       // { start } while an intro is being marked live
+  sleep: null,         // { mode, endsAt?, tick } sleep timer
 };
 
 function cache() {
@@ -73,6 +77,14 @@ function cache() {
     stats: $('#statsPanel'),
     statsBody: $('#statsBody'),
     statsClose: $('#statsClose'),
+    skipIntro: $('#skipIntro'),
+    skipIntroBar: $('#skipIntroBar'),
+    sleepChip: $('#sleepChip'),
+    sleepChipLabel: $('#sleepChipLabel'),
+    sleepOverlay: $('#sleepOverlay'),
+    sleepWhere: $('#sleepWhere'),
+    sleepResume: $('#sleepResume'),
+    sleepStop: $('#sleepStop'),
     upnext: $('#upnext'),
     upnextTitle: $('#upnextTitle'),
     upnextPlay: $('#upnextPlay'),
@@ -123,7 +135,11 @@ export async function play({ title, item, sourceId, startAt }) {
   session.active = true;
   session.upnextDismissed = false;
   session.failed = new Set();
+  session.intro = introOf(target);
+  session.introDismissed = false;
+  session.marking = null;
   dom.upnext.hidden = true;
+  dom.skipIntro.hidden = true;
 
   const preferred = sourceId
     ? session.sources.findIndex((s) => s.id === sourceId)
@@ -164,8 +180,10 @@ export function close() {
   dom.video.removeAttribute('src');
   dom.video.load();
   clearTracks();
+  cancelSleepTimer();
   dom.root.hidden = true;
   dom.upnext.hidden = true;
+  dom.skipIntro.hidden = true;
   document.body.classList.remove('is-playing');
   setFaux(false);
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -594,6 +612,78 @@ function buildMoreMenu() {
   const panel = dom.menus.more.querySelector('[data-menu-panel]');
   clear(panel);
 
+  // --- sleep timer ---------------------------------------------------------
+  panel.append(el('div.menu__label', { text: 'Sleep timer' }));
+
+  const offItem = el('button.menu__item', {
+    type: 'button',
+    onclick: () => { closeMenus(); cancelSleepTimer({ quiet: !sleepActive() }); buildMoreMenu(); },
+  }, [el('span', { text: 'Off' })]);
+  if (!sleepActive()) offItem.classList.add('is-active');
+  panel.append(offItem);
+
+  for (const minutes of SLEEP_CHOICES) {
+    const item = el('button.menu__item', {
+      type: 'button',
+      onclick: () => { closeMenus(); startSleepTimer(minutes); },
+    }, [el('span', { text: `${minutes} minutes` })]);
+    if (session.sleep?.mode === 'clock') {
+      const left = Math.round((session.sleep.endsAt - Date.now()) / 60_000);
+      if (left === minutes) item.classList.add('is-active');
+    }
+    panel.append(item);
+  }
+  if (session.queue.length > 1) {
+    const item = el('button.menu__item', {
+      type: 'button',
+      onclick: () => { closeMenus(); startSleepTimer('episode'); },
+    }, [el('span', { text: 'End of this episode' })]);
+    if (session.sleep?.mode === 'episode') item.classList.add('is-active');
+    panel.append(item);
+  }
+
+  // --- intro marker --------------------------------------------------------
+  panel.append(el('div.menu__sep'));
+  panel.append(el('div.menu__label', { text: 'Skip intro' }));
+
+  if (session.marking) {
+    panel.append(el('button.menu__item.is-active', {
+      type: 'button',
+      onclick: () => { closeMenus(); markIntro('episode'); },
+    }, [
+      el('span', { text: 'Mark intro end here' }),
+      el('small', { text: `from ${formatTime(session.marking.start)}` }),
+    ]));
+    panel.append(el('button.menu__item', {
+      type: 'button',
+      onclick: () => { closeMenus(); session.marking = null; flash('Marking cancelled'); buildMoreMenu(); },
+    }, [el('span', { text: 'Cancel marking' })]));
+  } else if (session.intro) {
+    panel.append(el('div.menu__note', {
+      text: `Marked ${formatTime(session.intro.start)}–${formatTime(session.intro.end)}`,
+    }));
+    panel.append(el('button.menu__item', {
+      type: 'button',
+      onclick: () => { closeMenus(); skipIntroNow(); },
+    }, [el('span', { text: 'Skip it now' })]));
+    if (session.item?.episodeId) {
+      panel.append(el('button.menu__item', {
+        type: 'button',
+        onclick: () => { closeMenus(); applyIntroToSeason(); },
+      }, [el('span', { text: 'Apply to whole season' })]));
+    }
+    panel.append(el('button.menu__item', {
+      type: 'button',
+      onclick: () => { closeMenus(); clearIntro(); },
+    }, [el('span', { text: 'Clear marker' })]));
+  } else {
+    panel.append(el('button.menu__item', {
+      type: 'button',
+      onclick: () => { closeMenus(); markIntro('episode'); },
+    }, [el('span', { text: 'Mark intro start here' }), el('small', { text: '⇧I' })]));
+  }
+
+  panel.append(el('div.menu__sep'));
   panel.append(el('div.menu__label', { text: 'Playback speed' }));
   for (const rate of [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]) {
     const item = el('button.menu__item', {
@@ -756,6 +846,193 @@ function playNext(auto = false) {
   }
   play({ title: session.title, item: next, startAt: 0 });
   if (auto) flash('Playing next episode');
+}
+
+// ---------------------------------------------------------------------------
+// skip intro
+
+/**
+ * The marked range for a playable. Episodes carry their own; a movie's lives
+ * on the title. State is re-read from the store rather than cached on the item,
+ * so a marker set during playback takes effect on the very next tick.
+ */
+function introOf(item) {
+  if (!item) return null;
+  const title = state.titles.find((t) => t.id === item.titleId) || session.title;
+  if (!title) return null;
+  if (!item.episodeId) return title.intro || null;
+  for (const season of title.seasons || []) {
+    const episode = (season.episodes || []).find((e) => e.id === item.episodeId);
+    if (episode) return episode.intro || null;
+  }
+  return null;
+}
+
+/**
+ * Show the button only while the intro is actually on screen, and only when
+ * there is somewhere worth jumping to. Dismissing it — or seeking past the
+ * range — keeps it down for the rest of the sitting.
+ */
+function updateSkipIntro(currentTime) {
+  const intro = session.intro;
+  if (!intro || !state.settings?.skipIntro || session.introDismissed) {
+    if (!dom.skipIntro.hidden) dom.skipIntro.hidden = true;
+    return;
+  }
+  const inside = currentTime >= intro.start && currentTime < intro.end - 0.5;
+  if (!inside) {
+    if (!dom.skipIntro.hidden) dom.skipIntro.hidden = true;
+    return;
+  }
+  dom.skipIntro.hidden = false;
+  const span = Math.max(0.001, intro.end - intro.start);
+  const done = Math.min(1, Math.max(0, (currentTime - intro.start) / span));
+  dom.skipIntroBar.style.width = `${done * 100}%`;
+}
+
+function skipIntroNow() {
+  if (!session.intro) return;
+  seekTo(session.intro.end);
+  session.introDismissed = true;
+  dom.skipIntro.hidden = true;
+  flash('Skipped intro');
+}
+
+/** Mark the intro live: press once at the start, once at the end. */
+async function markIntro(applyTo = 'episode') {
+  const at = Math.max(0, dom.video.currentTime);
+  if (!session.marking) {
+    session.marking = { start: at };
+    flash(`Intro starts at ${formatTime(at)} — play on, then mark the end`);
+    buildMoreMenu();
+    return;
+  }
+  const start = session.marking.start;
+  session.marking = null;
+  if (at - start < 1) {
+    flash('That intro would be under a second — start again');
+    buildMoreMenu();
+    return;
+  }
+
+  const intro = { start, end: at };
+  try {
+    const res = await api.setIntro(session.title.id, {
+      intro,
+      episodeId: session.item.episodeId,
+      applyTo: session.item.episodeId ? applyTo : 'episode',
+    });
+    upsertPlayedTitle(res.title);
+    session.intro = intro;
+    session.introDismissed = false;
+    flash(res.applied > 1
+      ? `Intro marked on ${res.applied} episodes (${formatTime(start)}–${formatTime(at)})`
+      : `Intro marked ${formatTime(start)}–${formatTime(at)}`);
+  } catch (err) {
+    flash(err.message || 'Could not save the intro marker');
+  }
+  buildMoreMenu();
+}
+
+/** Copy this episode's marker onto every episode in the same season. */
+async function applyIntroToSeason() {
+  if (!session.intro || !session.item?.episodeId) return;
+  try {
+    const res = await api.setIntro(session.title.id, {
+      intro: session.intro,
+      episodeId: session.item.episodeId,
+      applyTo: 'season',
+    });
+    upsertPlayedTitle(res.title);
+    flash(`Intro applied to ${res.applied} episodes`);
+  } catch (err) {
+    flash(err.message || 'Could not apply the marker');
+  }
+  buildMoreMenu();
+}
+
+async function clearIntro() {
+  try {
+    const res = await api.setIntro(session.title.id, { intro: null, episodeId: session.item.episodeId });
+    upsertPlayedTitle(res.title);
+    session.intro = null;
+    dom.skipIntro.hidden = true;
+    flash('Intro marker cleared');
+  } catch (err) {
+    flash(err.message || 'Could not clear the marker');
+  }
+  buildMoreMenu();
+}
+
+/** Keep the shared library in step with a title the player just changed. */
+function upsertPlayedTitle(title) {
+  if (!title) return;
+  const index = state.titles.findIndex((t) => t.id === title.id);
+  if (index >= 0) state.titles[index] = title;
+  session.title = title;
+  emit();
+}
+
+// ---------------------------------------------------------------------------
+// sleep timer
+
+const SLEEP_CHOICES = [15, 30, 45, 60, 90];
+
+function sleepActive() {
+  return Boolean(session.sleep);
+}
+
+function startSleepTimer(mode) {
+  cancelSleepTimer();
+  if (!mode) return;
+
+  if (mode === 'episode') {
+    session.sleep = { mode: 'episode' };
+    dom.sleepChip.hidden = false;
+    dom.sleepChipLabel.textContent = 'End of episode';
+    flash('Sleeping after this episode');
+  } else {
+    const minutes = Number(mode);
+    if (!Number.isFinite(minutes) || minutes <= 0) return;
+    session.sleep = { mode: 'clock', endsAt: Date.now() + minutes * 60_000 };
+    dom.sleepChip.hidden = false;
+    flash(`Sleeping in ${minutes} minutes`);
+  }
+  // A wall-clock tick, not a playback one: pausing the film should not stop
+  // the countdown any more than it stops the viewer falling asleep.
+  session.sleep.tick = setInterval(tickSleep, 1000);
+  tickSleep();
+  buildMoreMenu();
+}
+
+function cancelSleepTimer({ quiet = true } = {}) {
+  if (session.sleep?.tick) clearInterval(session.sleep.tick);
+  session.sleep = null;
+  dom.sleepChip.hidden = true;
+  dom.sleepOverlay.hidden = true;
+  if (!quiet) flash('Sleep timer off');
+}
+
+function tickSleep() {
+  const sleep = session.sleep;
+  if (!sleep) return;
+  if (sleep.mode !== 'clock') return;
+  const remaining = Math.max(0, sleep.endsAt - Date.now());
+  dom.sleepChipLabel.textContent = formatTime(Math.ceil(remaining / 1000));
+  if (remaining <= 0) fireSleep();
+}
+
+function fireSleep() {
+  const where = dom.video.currentTime;
+  cancelSleepTimer();
+  dom.video.pause();
+  saveProgress(true);
+  dom.upnext.hidden = true;
+  clearTimeout(session.upnextTimer);
+  session.upnextDismissed = true;
+  dom.sleepWhere.textContent = `Paused at ${formatTime(where)} — your place is saved.`;
+  dom.sleepOverlay.hidden = false;
+  showUi();
 }
 
 // ---------------------------------------------------------------------------
@@ -1068,6 +1345,7 @@ function bindEvents() {
     if (session.scrubbing) return;
     const { currentTime, duration } = video;
     dom.timeNow.textContent = formatTime(currentTime);
+    updateSkipIntro(currentTime);
     if (Number.isFinite(duration) && duration > 0) {
       const pct = (currentTime / duration) * 100;
       dom.scrubPlayed.style.width = `${pct}%`;
@@ -1095,6 +1373,13 @@ function bindEvents() {
   video.addEventListener('ended', () => {
     saveProgress(true);
     dom.btnPlay.innerHTML = ICONS.replay;
+    dom.skipIntro.hidden = true;
+    // "Stop after this episode" is exactly this moment: let the episode finish,
+    // then stop instead of rolling into the next one.
+    if (session.sleep?.mode === 'episode') {
+      fireSleep();
+      return;
+    }
     const next = session.queue[session.queueIndex + 1];
     if (next && state.settings.autoplayNext) startUpNextCountdown(next);
   });
@@ -1200,12 +1485,25 @@ function bindEvents() {
       const willOpen = panel.hidden;
       closeMenus();
       panel.hidden = !willOpen;
+      // A panel keeps its scroll position across rebuilds, so a menu reopened
+      // after a long scroll would otherwise show its middle.
+      if (willOpen) panel.scrollTop = 0;
       showUi();
     });
   }
   dom.root.addEventListener('click', (event) => {
     if (!event.target.closest('.menu')) closeMenus();
   });
+
+  // --- skip intro + sleep timer ---------------------------------------------
+  dom.skipIntro.addEventListener('click', skipIntroNow);
+  dom.sleepChip.addEventListener('click', () => cancelSleepTimer({ quiet: false }));
+  dom.sleepResume.addEventListener('click', () => {
+    dom.sleepOverlay.hidden = true;
+    session.upnextDismissed = false;
+    video.play().catch(() => {});
+  });
+  dom.sleepStop.addEventListener('click', () => { dom.sleepOverlay.hidden = true; close(); });
 
   // --- up next --------------------------------------------------------------
   dom.upnextPlay.addEventListener('click', () => playNext());
@@ -1251,6 +1549,8 @@ function onKeydown(event) {
     case 'm': video.muted = !video.muted; flash(video.muted ? 'Muted' : 'Unmuted'); break;
     case 'f': toggleFullscreen(); break;
     case 'i': togglePip(); break;
+    // Shift+I marks the intro: press at its first frame, again at its last.
+    case 'I': markIntro(); break;
     case 's': toggleStats(); break;
     case 'c': cycleSubtitles(); break;
     case 'q': cycleQuality(); break;

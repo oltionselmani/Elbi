@@ -183,12 +183,19 @@ export function formatBytes(bytes) {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`;
 }
 
-/** Convert SubRip to WebVTT so the browser's <track> element can use it. */
+/**
+ * Convert SubRip to WebVTT so the browser's <track> element can use it.
+ *
+ * The cue-index line is dropped with a horizontal-whitespace class rather than
+ * `\s`: `\s` matches newlines, so it would also eat the blank line separating
+ * the previous cue from this one, welding every cue in the file into a single
+ * block that the parser then reads as one long caption.
+ */
 export function srtToVtt(srt) {
   const body = String(srt)
     .replace(/^﻿/, '')
     .replace(/\r\n?/g, '\n')
-    .replace(/^\s*\d+\s*$\n(?=\d{2}:\d{2}:\d{2}[,.]\d{3})/gm, '')
+    .replace(/^[ \t]*\d+[ \t]*\n(?=\d{2}:\d{2}:\d{2}[,.]\d{3})/gm, '')
     .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
   return `WEBVTT\n\n${body.trim()}\n`;
 }

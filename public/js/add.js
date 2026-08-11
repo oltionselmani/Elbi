@@ -234,6 +234,23 @@ function scanPanel() {
               text: `These were imported but browsers cannot play them as-is: ${report.unplayable.slice(0, 10).join(', ')}. Remux them to .mp4 to watch in Elbi.`,
             }));
           }
+
+          // Posters are a separate round of network calls, so they run after
+          // the import is already reported rather than holding it up.
+          if (report.newTitleIds?.length && state.settings?.autoMatchMetadata) {
+            const looking = el('p.muted', { text: 'Looking up posters and details…' });
+            output.append(looking);
+            try {
+              const found = await api.enrichMetadata({ titleIds: report.newTitleIds });
+              await refresh();
+              const more = found.remaining ? ` ${found.remaining} still to do — scan again or match them by hand.` : '';
+              looking.textContent = found.matched.length
+                ? `Matched ${found.matched.length} of ${found.considered} via ${found.provider}.${more}`
+                : `No confident poster match for these (searched ${found.provider}). Use “Find poster & details” on a title to pick one.${more}`;
+            } catch (err) {
+              looking.textContent = `Posters could not be fetched: ${err.message}`;
+            }
+          }
         } catch (err) {
           output.append(el('div.note.note--bad', { text: err.message }));
         }
@@ -613,6 +630,15 @@ export function openSettings() {
   ].map(([value, label]) => el('option', {
     value, text: label, selected: (state.settings.subtitleBackground || 'shadow') === value,
   })));
+  const subLang = el('select', {}, [
+    ['alb', 'Albanian'], ['eng', 'English'], ['ita', 'Italian'], ['ger', 'German'],
+    ['fre', 'French'], ['spa', 'Spanish'], ['gre', 'Greek'], ['tur', 'Turkish'],
+    ['srp', 'Serbian'], ['mac', 'Macedonian'],
+  ].map(([value, label]) => el('option', {
+    value, text: label, selected: (state.settings.subtitleLanguage || 'alb') === value,
+  })));
+  const skipIntro = el('input', { type: 'checkbox', checked: state.settings.skipIntro !== false });
+  const autoMatch = el('input', { type: 'checkbox', checked: state.settings.autoMatchMetadata !== false });
 
   body.append(el('div', {}, [
     el('h2', { text: 'Settings' }),
@@ -638,6 +664,25 @@ export function openSettings() {
       el('label.field', {}, [el('span', { text: 'Text size' }), subSize]),
       el('label.field', {}, [el('span', { text: 'Background' }), subBg]),
     ]),
+    el('label.field', {}, [el('span', { text: 'Language to search for' }), subLang]),
+    el('p.muted', {
+      style: { marginTop: '-.5rem', fontSize: '.82rem' },
+      text: 'Used by “Find subtitles online”, which searches opensubtitles.org. Downloads are converted to WebVTT and re-encoded to UTF-8, so Albanian ë and ç survive.',
+    }),
+
+    el('h3', { text: 'Skip intro & posters', style: { marginTop: '1.2rem', fontSize: '1rem' } }),
+    el('label.checkline', {}, [skipIntro, el('span', { text: 'Show a “Skip intro” button over marked intros' })]),
+    el('p.muted', {
+      style: { marginTop: '-.35rem', fontSize: '.82rem' },
+      text: 'Mark an intro from the player’s ⋮ menu (or Shift+I): once at its first frame, once at its last. On a series you can then apply it to the whole season.',
+    }),
+    el('label.checkline', {}, [autoMatch, el('span', { text: 'Look up posters and details for newly imported titles' })]),
+    el('p.muted', {
+      style: { marginTop: '-.35rem', fontSize: '.82rem' },
+      text: state.server.metadataProvider === 'tmdb'
+        ? 'Matching against TMDB.'
+        : 'No TMDB key is set on this server, so matches come from Wikipedia and Wikidata — keyless, but the posters are lower resolution. Set ELBI_TMDB_KEY to use TMDB.',
+    }),
 
     el('h3', { text: 'Keyboard shortcuts', style: { marginTop: '1.2rem', fontSize: '1rem' } }),
     el('div.sourcelist', {}, [
@@ -651,6 +696,7 @@ export function openSettings() {
       [', / .', 'Previous / next frame'],
       ['< / >', 'Slower / faster'],
       ['M', 'Mute'], ['F', 'Fullscreen'], ['I', 'Picture-in-picture'],
+      ['Shift + I', 'Mark intro start, then intro end'],
       ['C', 'Cycle subtitles'], ['[ / ]', 'Nudge subtitle timing'],
       ['Q', 'Cycle quality'], ['N', 'Next episode'],
       ['S', 'Stats for nerds'], ['Esc', 'Leave the player'],
@@ -691,6 +737,9 @@ export function openSettings() {
               autoplayNext: autoplay.checked,
               subtitleSize: subSize.value,
               subtitleBackground: subBg.value,
+              subtitleLanguage: subLang.value,
+              skipIntro: skipIntro.checked,
+              autoMatchMetadata: autoMatch.checked,
             });
             state.settings = res.settings;
             // Cue styling is injected at runtime, so refresh it immediately.

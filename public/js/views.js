@@ -417,14 +417,22 @@ function detailContent(title, focusEpisodeId = null) {
   ]);
 
   const left = el('div', {}, [
+    title.tagline ? el('p.detail__tagline', { text: `“${title.tagline}”` }) : null,
     title.overview ? el('p', { text: title.overview }) : el('p.muted', { text: 'No description yet.' }),
     title.type === 'series' ? episodeSection(title) : sourceSection(title, list[0]),
   ]);
 
+  const castNames = (title.cast || []).map((c) => c.name).filter(Boolean);
   const right = el('div', {}, [
     el('dl.detail__facts', {}, [
       title.genres?.length ? el('dt', { text: 'Genres' }) : null,
       title.genres?.length ? el('dd', { text: title.genres.join(', ') }) : null,
+      title.director?.length ? el('dt', { text: title.director.length > 1 ? 'Directors' : 'Director' }) : null,
+      title.director?.length ? el('dd', { text: title.director.join(', ') }) : null,
+      castNames.length ? el('dt', { text: 'Cast' }) : null,
+      castNames.length ? el('dd', { text: castNames.slice(0, 8).join(', ') }) : null,
+      title.voteAverage ? el('dt', { text: 'Score' }) : null,
+      title.voteAverage ? el('dd', { text: `${title.voteAverage} / 10` }) : null,
       el('dt', { text: 'Added' }),
       el('dd', { text: new Date(title.addedAt).toLocaleDateString() }),
       el('dt', { text: 'Origin' }),
@@ -433,8 +441,22 @@ function detailContent(title, focusEpisodeId = null) {
       title.externalUrl ? el('dd', {}, [el('a', { href: title.externalUrl, target: '_blank', rel: 'noopener', text: 'archive.org', style: { textDecoration: 'underline' } })]) : null,
       title.license ? el('dt', { text: 'Licence' }) : null,
       title.license ? el('dd', { text: String(title.license) }) : null,
+      title.metadata?.url ? el('dt', { text: 'Matched from' }) : null,
+      title.metadata?.url ? el('dd', {}, [el('a', {
+        href: title.metadata.url, target: '_blank', rel: 'noopener',
+        text: title.metadata.provider === 'tmdb' ? 'TMDB' : 'Wikipedia',
+        style: { textDecoration: 'underline' },
+      })]) : null,
     ]),
     el('div.stack', { style: { marginTop: '1rem' } }, [
+      el('button.btn.btn--ghost.btn--sm', {
+        type: 'button',
+        onclick: () => openMatchPicker(title),
+      }, [title.poster ? 'Re-match poster & details' : 'Find poster & details']),
+      el('button.btn.btn--ghost.btn--sm', {
+        type: 'button',
+        onclick: () => openSubtitleSearch(title, first || list[0]),
+      }, ['Find subtitles online']),
       el('button.btn.btn--ghost.btn--sm', {
         type: 'button',
         onclick: async () => (await import('./add.js')).openAddSource(title),
@@ -613,6 +635,11 @@ function episodeSection(title) {
           }),
           pct > 0 ? el('div.progress', { style: { marginTop: '.35rem' } }, [el('i', { style: { width: `${pct}%` } })]) : null,
         ]),
+        el('button.iconbtn', {
+          type: 'button',
+          title: 'Find subtitles for this episode',
+          onclick: (e) => { e.stopPropagation(); openSubtitleSearch(title, item); },
+        }, ['CC']),
         el('button.iconbtn', {
           type: 'button',
           title: 'Remove episode',
@@ -931,6 +958,191 @@ export function openDownloads() {
   $('#sheetModal').addEventListener('elbi:closed', stop, { once: true });
 
   render();
+  openSheet();
+}
+
+// ---------------------------------------------------------------------------
+// metadata match sheet
+
+/**
+ * Pick the right film. Auto-matching handles the obvious cases; this exists
+ * for the rest — two films with the same name, or a filename the scanner read
+ * badly enough that the top hit is wrong.
+ */
+export function openMatchPicker(title) {
+  const body = clear($('#sheetBody'));
+  let query = title.name;
+  let year = title.year || '';
+
+  const results = el('div.stack');
+  const status = el('p.muted', { text: 'Searching…' });
+
+  const run = async () => {
+    clear(results);
+    status.textContent = 'Searching…';
+    try {
+      const data = await api.matchOptions(title.id, { q: query, year });
+      status.textContent = data.status?.note || '';
+      if (!data.results?.length) {
+        results.append(el('div.note', { text: `Nothing found for “${query}”. Try a shorter name, or drop the year.` }));
+        return;
+      }
+      for (const option of data.results) {
+        const thumb = option.poster
+          // Not lazy: there are at most six, and a picker whose posters have
+          // not arrived is a picker you cannot pick from.
+          ? el('img.matchopt__art', { src: imageSrc(option.poster), alt: '' })
+          : el('div.matchopt__art.matchopt__art--none', { text: '?' });
+        results.append(el('button.matchopt', {
+          type: 'button',
+          onclick: async (e) => {
+            const btn = e.currentTarget;
+            btn.disabled = true;
+            try {
+              const res = await api.applyMatch(title.id, { provider: option.provider, ref: option.ref });
+              upsertTitle(res.title);
+              refreshDetail(title.id);
+              closeSheet();
+              toast(`Matched to “${res.matched}” via ${res.provider}.`, 'ok');
+            } catch (err) {
+              toast(err.message, 'err');
+              btn.disabled = false;
+            }
+          },
+        }, [
+          thumb,
+          el('div.matchopt__text', {}, [
+            el('strong', { text: option.name }),
+            el('span.matchopt__meta', {
+              text: [option.year || 'year unknown', `${Math.round(option.score * 100)}% match`].join(' · '),
+            }),
+            el('span.matchopt__blurb', { text: (option.overview || '').slice(0, 180) }),
+          ]),
+        ]));
+      }
+    } catch (err) {
+      status.textContent = '';
+      results.append(el('div.note.note--bad', { text: err.message }));
+    }
+  };
+
+  const nameInput = el('input', { type: 'text', value: query, oninput: (e) => { query = e.target.value; } });
+  const yearInput = el('input', { type: 'number', value: String(year || ''), placeholder: 'Year', oninput: (e) => { year = e.target.value; } });
+
+  body.append(
+    el('h2', { text: 'Find poster & details' }),
+    el('form.matchform', {
+      onsubmit: (e) => { e.preventDefault(); run(); },
+    }, [
+      el('label.field', {}, [el('span', { text: 'Title' }), nameInput]),
+      el('label.field', {}, [el('span', { text: 'Year' }), yearInput]),
+      el('button.btn.btn--primary', { type: 'submit' }, ['Search']),
+    ]),
+    status,
+    results,
+  );
+  run();
+  openSheet();
+}
+
+// ---------------------------------------------------------------------------
+// subtitle search sheet
+
+const SUB_LANG_LABEL = { alb: 'Albanian', eng: 'English', ita: 'Italian', ger: 'German', fre: 'French' };
+
+/** Search and attach subtitles, defaulting to Albanian. */
+export function openSubtitleSearch(title, item = null) {
+  const body = clear($('#sheetBody'));
+  let lang = state.settings?.subtitleLanguage || 'alb';
+
+  const results = el('div.stack');
+  const status = el('p.muted', {});
+
+  const run = async () => {
+    clear(results);
+    status.textContent = 'Searching…';
+    try {
+      const data = await api.searchSubtitles({
+        titleId: title.id,
+        episodeId: item?.episodeId || '',
+        lang,
+      });
+      if (!data.results?.length) {
+        status.textContent = '';
+        results.append(el('div.note', {
+          text: `No ${data.language.name} subtitles found for “${title.name}”.`
+            + (title.imdbId ? '' : ' Matching the title on TMDB or Wikipedia first usually helps — it fills in the IMDb id used for the lookup.'),
+        }));
+        return;
+      }
+      status.textContent = `${data.results.length} ${data.language.name} tracks, most-downloaded first.`;
+      for (const option of data.results) {
+        const tags = [`${option.downloads.toLocaleString()} downloads`];
+        if (option.rating > 0) tags.push(`rated ${option.rating}`);
+        if (option.hearingImpaired) tags.push('SDH');
+        if (option.machineTranslated) tags.push('machine translated');
+        if (option.trusted) tags.push('trusted uploader');
+
+        results.append(el('div.sourceitem', {}, [
+          el('div.sourceitem__main', {}, [
+            el('div.sourceitem__name', { text: option.filename }),
+            el('div.sourceitem__meta', { text: tags.join(' · ') }),
+          ]),
+          el('button.btn.btn--sm', {
+            type: 'button',
+            onclick: (e) => attach(e.currentTarget, option),
+          }, ['Use this']),
+        ]));
+      }
+    } catch (err) {
+      status.textContent = '';
+      results.append(el('div.note.note--bad', { text: err.message }));
+    }
+  };
+
+  const attach = async (btn, option) => {
+    btn.disabled = true;
+    btn.textContent = 'Fetching…';
+    try {
+      const res = await api.fetchSubtitle(title.id, {
+        url: option.downloadUrl,
+        encoding: option.encoding,
+        format: option.format,
+        lang,
+        episodeId: item?.episodeId || null,
+        label: SUB_LANG_LABEL[lang] || option.langName || 'Subtitles',
+      });
+      upsertTitle(res.title);
+      refreshDetail(title.id);
+      closeSheet();
+      toast(`${res.language} subtitles added — ${res.cues} cues.`, 'ok');
+    } catch (err) {
+      toast(err.message, 'err');
+      btn.disabled = false;
+      btn.textContent = 'Use this';
+    }
+  };
+
+  const picker = el('select', {
+    onchange: (e) => { lang = e.target.value; run(); },
+  }, [
+    ['alb', 'Albanian'], ['eng', 'English'], ['ita', 'Italian'], ['ger', 'German'],
+    ['fre', 'French'], ['spa', 'Spanish'], ['gre', 'Greek'], ['tur', 'Turkish'],
+    ['srp', 'Serbian'], ['mac', 'Macedonian'],
+  ].map(([value, label]) => el('option', { value, text: label, selected: value === lang })));
+
+  body.append(
+    el('h2', { text: 'Find subtitles' }),
+    el('p.muted', {
+      text: item?.episodeId
+        ? `Searching for ${title.name} — season ${item.season}, episode ${item.episode}.`
+        : `Searching opensubtitles.org for “${title.name}”.`,
+    }),
+    el('label.field', {}, [el('span', { text: 'Language' }), picker]),
+    status,
+    results,
+  );
+  run();
   openSheet();
 }
 

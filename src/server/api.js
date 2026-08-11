@@ -12,6 +12,9 @@ import {
   createUpload, getUpload, appendChunk, finishUpload, abortUpload, saveArtwork, saveSubtitleFile,
 } from './uploads.js';
 import * as discover from './discover.js';
+import * as metadata from './metadata.js';
+import * as subsearch from './subsearch.js';
+import { normalizeIntro } from './store.js';
 import { id, srtToVtt, qualityLabel, formatBytes } from './util.js';
 
 const MAX_CHUNK_BYTES = 64 * 1024 * 1024;
@@ -40,6 +43,8 @@ export async function handleApi(req, res, url) {
     case 'scan': return handleScan(req, res, method);
     case 'artwork': return handleArtwork(req, res, url, method);
     case 'discover': return handleDiscover(req, res, url, route, method);
+    case 'metadata': return handleMetadata(req, res, url, route, method);
+    case 'subsearch': return handleSubSearch(req, res, url, method);
     case 'remote': return handleRemote(req, res, url);
     default: return fail(res, 404, `No API route /${route.join('/')}`);
   }
@@ -81,6 +86,7 @@ function handleLibrary(req, res, url, method) {
     server: {
       authRequired: authRequired(),
       allowRemote: config.allowRemote,
+      metadataProvider: metadata.providerName(),
       mediaDir: config.mediaDir,
       uploadsDir: config.uploadsDir,
       scanRoots: allowedRoots(),
@@ -192,6 +198,104 @@ async function handleTitles(req, res, url, route, method) {
     return fail(res, 405, 'Method not allowed');
   }
 
+  // /api/titles/:id/markers — the skip-intro range
+  if (sub === 'markers') {
+    if (method !== 'POST') return fail(res, 405, 'Method not allowed');
+    const body = await readJson(req);
+    const intro = body.intro === null ? null : normalizeIntro(body.intro);
+    if (body.intro && !intro) {
+      return fail(res, 400, 'An intro marker needs a start and an end at least a second apart.');
+    }
+
+    const targets = introTargets(title, body);
+    if (!targets.length) return fail(res, 404, 'No such episode');
+    for (const target of targets) target.intro = intro;
+
+    await saveDb();
+    return json(res, 200, { title: publicTitle(title), applied: targets.length });
+  }
+
+  // /api/titles/:id/match — posters and metadata from a provider
+  if (sub === 'match') {
+    if (method === 'GET') {
+      const found = await metadata.search({
+        name: url.searchParams.get('q') || title.name,
+        year: Number(url.searchParams.get('year')) || title.year,
+        type: title.type,
+      });
+      return json(res, 200, { ...found, status: metadata.providerStatus() });
+    }
+    if (method === 'POST') {
+      const body = await readJson(req);
+      const meta = body.provider && body.ref
+        ? await metadata.detail({ provider: body.provider, ref: body.ref, type: title.type })
+        : await metadata.autoMatch({ name: body.name || title.name, year: body.year ?? title.year, type: title.type });
+
+      if (!meta) {
+        return fail(res, 404, `No confident match for "${title.name}". Search and pick one instead.`);
+      }
+      const changed = metadata.mergeIntoTitle(title, meta, { overwrite: body.overwrite !== false });
+      await saveDb();
+      return json(res, 200, { title: publicTitle(title), changed, matched: meta.name, provider: meta.provider });
+    }
+    return fail(res, 405, 'Method not allowed');
+  }
+
+  // /api/titles/:id/subtitles/fetch — download a searched subtitle track
+  if (sub === 'subtitles' && subId === 'fetch') {
+    if (method !== 'POST') return fail(res, 405, 'Method not allowed');
+    const body = await readJson(req);
+    const language = subsearch.resolveLanguage(body.lang);
+
+    let candidate = body.url ? { downloadUrl: body.url, encoding: body.encoding, format: body.format } : null;
+    if (!candidate) {
+      // "Just get me subtitles": search and take the best-scoring result.
+      const playable = findPlayable(titleId, body.episodeId);
+      const found = await subsearch.search({
+        query: title.name,
+        imdbId: title.imdbId,
+        season: playable?.season ?? null,
+        episode: playable?.episode ?? null,
+        lang: language.id,
+        limit: 5,
+      });
+      candidate = found.results[0];
+      if (!candidate) {
+        return fail(res, 404, `No ${language.name} subtitles found for "${title.name}".`);
+      }
+    }
+
+    const vtt = await subsearch.download({
+      url: candidate.downloadUrl,
+      encoding: candidate.encoding,
+      format: candidate.format,
+    });
+    const savedPath = await saveSubtitleFile(Buffer.from(vtt, 'utf8'), `${title.name}.${language.iso1}.vtt`);
+    const entry = {
+      id: id('sub_'),
+      kind: 'file',
+      path: savedPath,
+      lang: language.iso1,
+      label: body.label || language.name,
+      origin: 'opensubtitles',
+    };
+    const pool = resolveSubtitleContainer(title, body.episodeId);
+    if (!pool) return fail(res, 404, 'No such episode');
+    // Re-fetching a language replaces it rather than stacking duplicates.
+    const stale = pool.findIndex((s) => s.origin === 'opensubtitles' && s.lang === language.iso1);
+    if (stale >= 0) pool.splice(stale, 1);
+    pool.push(entry);
+
+    await saveDb();
+    return json(res, 201, {
+      title: publicTitle(title),
+      subtitleId: entry.id,
+      language: language.name,
+      filename: candidate.filename || '',
+      cues: (vtt.match(/-->/g) || []).length,
+    });
+  }
+
   // /api/titles/:id/subtitles[/:subtitleId]
   if (sub === 'subtitles') {
     if (method === 'POST') {
@@ -243,6 +347,23 @@ function resolveSubtitleContainer(title, episodeId) {
     if (episode) return episode.subtitles;
   }
   return null;
+}
+
+/**
+ * Which objects a marker write lands on. Marking one episode's intro and
+ * applying it across the season is the point: a show's titles run for the same
+ * seconds every week, so nobody should have to mark thirteen of them.
+ */
+function introTargets(title, body = {}) {
+  if (!body.episodeId) return title.type === 'series' ? [] : [title];
+  for (const season of title.seasons || []) {
+    const episode = (season.episodes || []).find((e) => e.id === body.episodeId);
+    if (!episode) continue;
+    if (body.applyTo === 'all') return (title.seasons || []).flatMap((s) => s.episodes || []);
+    if (body.applyTo === 'season') return season.episodes || [];
+    return [episode];
+  }
+  return [];
 }
 
 async function buildSourceFromBody(body = {}) {
@@ -519,6 +640,16 @@ async function handleSettings(req, res, method) {
   if ('subtitleBackground' in body && ['none', 'shadow', 'box'].includes(body.subtitleBackground)) {
     db.settings.subtitleBackground = body.subtitleBackground;
   }
+  if ('skipIntro' in body) db.settings.skipIntro = Boolean(body.skipIntro);
+  if ('autoMatchMetadata' in body) db.settings.autoMatchMetadata = Boolean(body.autoMatchMetadata);
+  if ('sleepTimerMinutes' in body) db.settings.sleepTimerMinutes = clamp(Number(body.sleepTimerMinutes), 5, 240, 45);
+  if ('subtitleLanguage' in body) {
+    try {
+      db.settings.subtitleLanguage = subsearch.resolveLanguage(body.subtitleLanguage).id;
+    } catch (err) {
+      return fail(res, 400, err.message);
+    }
+  }
   await saveDb();
   return json(res, 200, { settings: db.settings });
 }
@@ -607,6 +738,87 @@ async function handleDiscover(req, res, url, route, method) {
     page: url.searchParams.get('page') || 1,
   });
   return json(res, 200, result);
+}
+
+// --------------------------------------------------------------------------
+// metadata (TMDB when a key is set, Wikipedia + Wikidata otherwise)
+
+async function handleMetadata(req, res, url, route, method) {
+  if (route[1] === 'status' && method === 'GET') {
+    return json(res, 200, metadata.providerStatus());
+  }
+
+  // Fill in posters for titles that have none. Kept separate from /api/scan so
+  // importing files stays instant and the network round trips are opt-in.
+  if (route[1] === 'enrich' && method === 'POST') {
+    const body = await readJson(req).catch(() => ({}));
+    const db = loadDb();
+    const wanted = Array.isArray(body.titleIds) && body.titleIds.length
+      ? db.titles.filter((t) => body.titleIds.includes(t.id))
+      : db.titles.filter((t) => !t.poster);
+    // Lookups run one at a time and are deliberately paced (see metadata.js),
+    // so a batch is kept small enough to finish inside one request. `remaining`
+    // tells the caller whether to come back for more.
+    const budget = Math.max(1, Math.min(40, Number(body.limit) || 10));
+    const queue = wanted.slice(0, budget);
+
+    const matched = [];
+    const missed = [];
+    for (const title of queue) {
+      try {
+        const meta = await metadata.autoMatch({ name: title.name, year: title.year, type: title.type });
+        if (!meta) {
+          missed.push({ name: title.name, reason: 'no confident match' });
+          continue;
+        }
+        metadata.mergeIntoTitle(title, meta, { overwrite: false });
+        matched.push({ id: title.id, name: title.name, matchedAs: meta.name });
+      } catch (err) {
+        // One unreachable lookup should not abandon the rest of the batch.
+        missed.push({ name: title.name, reason: err.message });
+      }
+    }
+    if (matched.length) await saveDb();
+    return json(res, 200, {
+      provider: metadata.providerName(),
+      considered: queue.length,
+      remaining: Math.max(0, wanted.length - queue.length),
+      matched,
+      missed,
+      titles: matched.length ? db.titles.map(publicTitle) : [],
+    });
+  }
+
+  if (method !== 'GET') return fail(res, 405, 'Method not allowed');
+  const found = await metadata.search({
+    name: url.searchParams.get('q') || '',
+    year: Number(url.searchParams.get('year')) || null,
+    type: url.searchParams.get('type') === 'series' ? 'series' : 'movie',
+  });
+  return json(res, 200, { ...found, status: metadata.providerStatus() });
+}
+
+// --------------------------------------------------------------------------
+// subtitle search
+
+async function handleSubSearch(req, res, url, method) {
+  if (method !== 'GET') return fail(res, 405, 'Method not allowed');
+  const titleId = url.searchParams.get('titleId');
+  const title = titleId ? findTitle(titleId) : null;
+  if (titleId && !title) return fail(res, 404, 'No such title');
+
+  const episodeId = url.searchParams.get('episodeId');
+  const playable = title ? findPlayable(titleId, episodeId) : null;
+
+  const found = await subsearch.search({
+    query: url.searchParams.get('q') || title?.name || '',
+    imdbId: url.searchParams.get('imdbId') || title?.imdbId || '',
+    season: url.searchParams.get('season') ?? playable?.season ?? null,
+    episode: url.searchParams.get('episode') ?? playable?.episode ?? null,
+    lang: url.searchParams.get('lang'),
+    limit: url.searchParams.get('limit'),
+  });
+  return json(res, 200, { ...found, languages: subsearch.LANGUAGES });
 }
 
 async function handleRemote(req, res, url) {

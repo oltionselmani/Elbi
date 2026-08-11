@@ -118,6 +118,24 @@
 
   <div class="player__toast" id="playerToast" hidden></div>
 
+  <!-- Sits outside #playerUi so it survives the controls fading out. -->
+  <button class="skipintro" id="skipIntro" type="button" hidden>
+    Skip intro
+    <span class="skipintro__bar"><i id="skipIntroBar"></i></span>
+  </button>
+
+  <div class="sleep" id="sleepOverlay" hidden>
+    <div class="sleep__card">
+      <svg viewBox="0 0 24 24" class="sleep__moon" aria-hidden="true"><path d="M12.3 2a1 1 0 0 0-.8 1.6A7 7 0 0 1 4.4 14a1 1 0 0 0-1 1.5A9 9 0 1 0 12.3 2Z"/></svg>
+      <strong>Sleep timer finished</strong>
+      <p class="muted" id="sleepWhere">Paused so you don't lose your place.</p>
+      <div class="row-gap">
+        <button class="btn btn--primary" id="sleepResume" type="button">Keep watching</button>
+        <button class="btn btn--ghost" id="sleepStop" type="button">Close player</button>
+      </div>
+    </div>
+  </div>
+
   <div class="player__error" id="playerError" hidden>
     <h3>Can't play this file</h3>
     <p id="playerErrorText"></p>
@@ -141,6 +159,10 @@
         <strong id="playerTitle"></strong>
         <span id="playerSubtitle" class="muted"></span>
       </div>
+      <button class="pill pill--sleep" id="sleepChip" type="button" hidden>
+        <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M12.3 2a1 1 0 0 0-.8 1.6A7 7 0 0 1 4.4 14a1 1 0 0 0-1 1.5A9 9 0 1 0 12.3 2Z"/></svg>
+        <span id="sleepChipLabel">45:00</span>
+      </button>
     </div>
 
     <div class="player__bottom">
