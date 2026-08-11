@@ -136,10 +136,18 @@ async function handleTitles(req, res, url, route, method) {
     if (method === 'GET') return json(res, 200, { title: publicTitle(title) });
     if (method === 'PATCH') {
       const body = await readJson(req);
-      const editable = ['name', 'year', 'overview', 'genres', 'poster', 'backdrop', 'rating', 'runtimeMin', 'type'];
+      // Cast, director and tagline belong here too: the enricher writes them,
+      // the detail sheet shows them and search reads them, so refusing to edit
+      // them left three fields you could see but never correct.
+      const editable = [
+        'name', 'year', 'overview', 'tagline', 'genres', 'poster', 'backdrop',
+        'rating', 'runtimeMin', 'type', 'cast', 'director',
+      ];
       for (const key of editable) {
         if (!(key in body)) continue;
         if (key === 'genres') title.genres = Array.isArray(body.genres) ? body.genres.map(String) : [];
+        else if (key === 'cast') title.cast = normalizeCast(body.cast);
+        else if (key === 'director') title.director = normalizeNames(body.director);
         else if (key === 'type') title.type = body.type === 'series' ? 'series' : 'movie';
         else if (key === 'year' || key === 'runtimeMin') title[key] = body[key] === null ? null : Number(body[key]) || null;
         else title[key] = body[key] === null ? null : String(body[key]);
@@ -393,6 +401,33 @@ async function buildSourceFromBody(body = {}) {
   const stat = await fsp.stat(contained).catch(() => null);
   if (!stat?.isFile()) throw Object.assign(new Error('That file does not exist'), { status: 404 });
   return makeSource({ ...body, path: contained, size: stat.size });
+}
+
+/**
+ * Cast is stored as `{ name, role }`. Accept a plain list of names too — that
+ * is what someone hand-editing the field will type.
+ */
+function normalizeCast(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (typeof entry === 'string') return { name: entry.trim(), role: '' };
+      if (entry && typeof entry === 'object') {
+        return { name: String(entry.name ?? '').trim(), role: String(entry.role ?? '').trim() };
+      }
+      return null;
+    })
+    .filter((c) => c && c.name)
+    .slice(0, 40);
+}
+
+/** Directors are stored as bare names; unwrap `{ name }` if that is what arrives. */
+function normalizeNames(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => (typeof entry === 'string' ? entry : String(entry?.name ?? '')).trim())
+    .filter(Boolean)
+    .slice(0, 10);
 }
 
 // --------------------------------------------------------------------------

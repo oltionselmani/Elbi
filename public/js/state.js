@@ -1,4 +1,5 @@
 import { api } from './api.js';
+import { searchTitles as search } from './search.js';
 
 const LS_PROFILE = 'elbi.profile';
 const LS_VOLUME = 'elbi.volume';
@@ -207,16 +208,8 @@ export function allGenres() {
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([name]) => name);
 }
 
-export function searchTitles(query) {
-  const q = String(query || '').trim().toLowerCase();
-  if (!q) return [];
-  return state.titles.filter((title) => {
-    const haystack = [
-      title.name, title.year, title.overview, ...(title.genres || []), ...(title.tags || []),
-      ...(title.seasons || []).flatMap((s) => s.episodes.map((e) => e.name)),
-    ].join(' ').toLowerCase();
-    return haystack.includes(q);
-  });
+export function searchTitles(query, options) {
+  return search(state.titles, query, options);
 }
 
 window.addEventListener('online', () => { state.online = true; emit(); });

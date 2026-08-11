@@ -402,6 +402,52 @@ test('titles can be edited and settings persisted', async () => {
   assert.equal(clamped.body.settings.seekStep, 120);
 });
 
+/**
+ * The enricher writes cast, director and tagline, the detail sheet shows them
+ * and search reads them — but PATCH used to drop all three on the floor, so
+ * they were the only fields you could see and never correct.
+ */
+test('cast, director and tagline can be edited', async () => {
+  const patched = await call('PATCH', `/api/titles/${titleId}`, {
+    tagline: 'Every reel tells one.',
+    cast: [{ name: 'Leonardo DiCaprio', role: 'Cobb' }, { name: 'Elliot Page', role: 'Ariadne' }],
+    director: ['Christopher Nolan'],
+  });
+  assert.equal(patched.status, 200);
+  assert.equal(patched.body.title.tagline, 'Every reel tells one.');
+  assert.deepEqual(patched.body.title.director, ['Christopher Nolan']);
+  assert.equal(patched.body.title.cast[0].name, 'Leonardo DiCaprio');
+  assert.equal(patched.body.title.cast[0].role, 'Cobb');
+
+  // It survives a re-read, rather than only existing in the response.
+  const reread = await call('GET', `/api/titles/${titleId}`);
+  assert.equal(reread.body.title.cast.length, 2);
+  assert.deepEqual(reread.body.title.director, ['Christopher Nolan']);
+});
+
+test('hand-edited cast and director are normalised into the stored shape', async () => {
+  // Bare names for cast, and objects for director — the shapes someone editing
+  // by hand would reasonably send.
+  const patched = await call('PATCH', `/api/titles/${titleId}`, {
+    cast: ['Audrey Tautou', { name: '  Mathieu Kassovitz  ', role: ' Nino ' }, '', null, { role: 'no name' }],
+    director: [{ name: 'Jean-Pierre Jeunet' }, '  ', 'Someone Else'],
+  });
+  assert.equal(patched.status, 200);
+  assert.deepEqual(patched.body.title.cast, [
+    { name: 'Audrey Tautou', role: '' },
+    { name: 'Mathieu Kassovitz', role: 'Nino' },
+  ], 'empty entries dropped, whitespace trimmed, strings promoted to objects');
+  assert.deepEqual(patched.body.title.director, ['Jean-Pierre Jeunet', 'Someone Else']);
+});
+
+test('a title with no cast or director round-trips as empty arrays', async () => {
+  const cleared = await call('PATCH', `/api/titles/${titleId}`, { cast: [], director: [], tagline: '' });
+  assert.equal(cleared.status, 200);
+  assert.deepEqual(cleared.body.title.cast, []);
+  assert.deepEqual(cleared.body.title.director, []);
+  assert.equal(cleared.body.title.tagline, '');
+});
+
 test('deleting a title removes it and its uploaded file when asked', async () => {
   const before2 = await call('GET', '/api/library');
   const uploaded = before2.body.titles.find((t) => t.id === titleId);
