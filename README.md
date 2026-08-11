@@ -38,12 +38,22 @@ up in your library.
 | **Add by URL** | Paste a direct link to a video | Anything hosted elsewhere |
 
 Uploads are chunked and resumable, so a 40 GB remux survives a dropped connection and
-picks up from the byte the server already has. Nothing is ever buffered in memory.
+picks up from the byte the server already has — the byte count is read from the file on
+disk rather than from a running tally, so an upload interrupted mid-chunk resumes at the
+right offset instead of re-sending a stretch into the middle of the film. Nothing is ever
+buffered in memory.
 
 The folder scanner reads names like `The.Quiet.Harbour.2014.1080p.BluRay.x264.mkv` and
 fills in the title, year and resolution. Files named `Show.S01E02.mkv` are grouped into a
 series with seasons and episodes. Matching `.srt` / `.vtt` files sitting next to a video
 are attached as subtitle tracks automatically.
+
+**Symlinks are followed**, so the usual `ln -s /mnt/nas/movies ~/media/movies` works.
+A film reachable through two different links is imported once, not twice, and a link
+pointing back up its own tree won't send the scan round forever. Because a link can point
+anywhere, each file is judged by where it *really* lives: if that's outside
+`ELBI_MEDIA_DIR` and `ELBI_SCAN_DIRS`, the scan names the file and tells you to add its
+location to `ELBI_SCAN_DIRS`, rather than quietly skipping it.
 
 ### Watch without downloading
 
@@ -113,7 +123,13 @@ remux, a 1080p copy and a 720p copy and all three appear, highest first.
 | `,` `.` | Previous / next frame | | `N` | Next episode |
 | `[` `]` | Nudge subtitle timing | | `⇧I` | Mark intro start / end |
 | `<` `>` | Slower / faster | | `S` | Stats for nerds |
-| `Home` `End` | Start / end | | `Esc` | Leave the player |
+| `Home` `End` | Start / end | | `?` | Show this list |
+| `Esc` | Close the list, leave fullscreen, then close the player | | | |
+
+You don't have to memorise any of that: press `?` while watching and the whole list
+appears over the film, grouped by what the keys do. The film keeps playing behind it.
+The table above and the overlay are generated from the same source, and a test fails if
+a key is added to one without the other.
 
 Outside the player: `/` focuses search, `A` opens the add panel, `G` goes home.
 
@@ -185,6 +201,23 @@ This needs no API key. What Elbi does to each download before it reaches the pla
 Matching is by IMDb id when the title has one (which is why matching a poster first helps)
 and by name otherwise; for a series it searches by season and episode. If the free download
 quota runs out, Elbi says so instead of attaching an empty file.
+
+### Finding things
+
+**Search** looks at the title, year, genres, tags, episode names, synopsis — and the cast
+and director, so *DiCaprio* finds the film even when you can't recall what it was called.
+It folds accents on both sides, so **Shqiperia** finds *Shqipëria* and **Amelie** finds
+*Amélie* — typing the diacritic is optional, never required. Results are ranked, so a word
+in the title beats the same word buried in a synopsis, and a one-letter typo still finds
+the film without ever outranking an exact match. Every word you type has to match
+something: half a query is noise, not a result.
+
+**My library** has a filter row above the grid: sort by A–Z, recently added, newest,
+oldest or longest; narrow to films or series; narrow to not started, in progress or
+finished; and narrow to a genre — each genre offered with the number of titles behind it,
+so no chip is a dead end. The heading counts what's shown against what exists ("3 of 41
+titles"), so a filter is never silently in effect, and your choice is remembered for next
+time.
 
 ### Profiles
 
@@ -295,6 +328,7 @@ Everything is an environment variable; none of them are required.
 | `ELBI_TMDB_KEY` | *(unset)* | TMDB API key or v4 read token. Without it, posters come from Wikipedia instead |
 | `ELBI_SUBTITLE_LANG` | `alb` | Default subtitle language to search for (ISO 639-2/B; `alb` is Albanian) |
 | `ELBI_SESSION_DAYS` | `30` | How long a login lasts |
+| `ELBI_TRUST_PROXY` | `0` | Set `1` **only** behind a reverse proxy you control, so `X-Forwarded-For` names the client for login throttling |
 | `ELBI_LOG` | `1` | Set `0` to silence request logging |
 
 ```bash
@@ -305,9 +339,21 @@ node server.js
 ```
 
 Files are only ever served from `ELBI_MEDIA_DIR` and the folders in `ELBI_SCAN_DIRS`;
-paths that try to climb out are rejected. Elbi will only *delete* files it uploaded
-itself — a scanned library is never touched, even when you remove a title and tick
-"delete files".
+paths that try to climb out are rejected, including through a symlink. Elbi will only
+*delete* files it uploaded itself — a scanned library is never touched, even when you
+remove a title and tick "delete files".
+
+**About the password.** Sessions are signed with the server secret *and* the current
+password, so changing `ELBI_PASSWORD` immediately invalidates every session issued under
+the old one — the whole point of changing it. The password itself never leaves the
+server; it only contributes to the signing key.
+
+Wrong passwords are throttled per client: five free attempts, then a lockout that doubles
+with each further miss, capped at fifteen minutes and cleared the moment you get it
+right. Mistyping your own password costs you nothing; guessing at a few hundred attempts
+a second stops being possible. `X-Forwarded-For` is ignored unless you set
+`ELBI_TRUST_PROXY=1`, because trusting it by default would let anyone forge a fresh
+identity per request and walk straight past the limit.
 
 ---
 
@@ -431,18 +477,29 @@ nothing that rots when you come back to it in two years.
 npm test
 ```
 
-37 tests covering filename parsing, range-request edge cases, path-traversal refusal,
-SRT→VTT conversion, subtitle charset decoding, advert-cue stripping, subtitle-download URL
-containment, skip-intro marker validation, the resume-rewind arithmetic, the fixed profile
-roster (including that it refuses to be added to or deleted from, and that one profile's
-history never leaks into another's), and a full server round trip: chunked upload →
-byte-exact streaming → folder scan → progress → deletion → restart.
+104 tests covering filename parsing, range-request edge cases, path-traversal refusal,
+SRT→VTT conversion (including the single-digit hour that makes a browser discard an entire
+file), subtitle charset decoding, advert-cue stripping, subtitle-download URL containment,
+skip-intro marker validation, the resume-rewind arithmetic, search ranking and accent
+folding, library filtering and sorting, session revocation when the password changes,
+login throttling, the fixed profile roster (including that it refuses to be added to or
+deleted from, and that one profile's history never leaks into another's), and a full
+server round trip: chunked upload → byte-exact streaming → folder scan → progress →
+deletion → restart.
+
+Several of them exist to stop two things drifting apart rather than to test a function:
+the keyboard overlay is checked against the handler that implements it in both directions,
+and the service worker's precache list is checked against everything actually shipped in
+`public/`. Add a shortcut without documenting it, or a module without precaching it, and
+the suite fails.
 
 The browser side was verified against real Chromium — 37 checks covering playback,
 double-click seeking, mid-playback quality switching, live FPS measurement, subtitle
 loading, subtitle timing offset and sizing, the profile gate, resuming five seconds before
 the stop point, and a further 9 covering offline download plus seeking with the network
-switched off.
+switched off. Another 51 cover the newer work: the shortcut overlay, search by cast and
+by unaccented spelling, the library filter row on desktop and phone, and every shipped
+font and icon surviving with the network cut.
 
 A further 25 checks drive the four newest features against the live services: a metadata
 search that returns real candidates, the poster loading as actual image bytes and rendering
