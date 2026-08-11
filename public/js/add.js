@@ -234,6 +234,15 @@ function scanPanel() {
               text: `These were imported but browsers cannot play them as-is: ${report.unplayable.slice(0, 10).join(', ')}. Remux them to .mp4 to watch in Elbi.`,
             }));
           }
+          // Symlinks are followed, so a link can legitimately point at a disk
+          // Elbi has not been told about. Say so instead of quietly skipping it.
+          if (report.outsideRoots?.length) {
+            output.append(el('div.note.note--bad', {
+              text: `Skipped ${report.outsideRoots.length} file${report.outsideRoots.length === 1 ? '' : 's'} `
+                + `that live outside the folders Elbi may read: ${report.outsideRoots.slice(0, 8).join(', ')}`
+                + `${report.outsideRoots.length > 8 ? '…' : ''}. Add that location to ELBI_SCAN_DIRS and scan again.`,
+            }));
+          }
 
           // Posters are a separate round of network calls, so they run after
           // the import is already reported rather than holding it up.

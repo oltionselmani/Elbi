@@ -175,22 +175,44 @@ export function ensureEpisode(season, number, name) {
   return episode;
 }
 
-/** Sources already registered, keyed by absolute path — used to skip re-imports. */
-function indexedFilePaths() {
+/**
+ * Sources already registered, keyed by absolute path — used to skip re-imports.
+ * Both the stored path and its real path are recorded, so a library written
+ * before links were followed still recognises its own files.
+ */
+async function indexedFilePaths() {
   const set = new Set();
   for (const title of loadDb().titles) {
     for (const p of playables(title)) {
       for (const source of p.sources) {
         const abs = sourceFilePath(source);
-        if (abs) set.add(abs);
+        if (!abs) continue;
+        set.add(abs);
+        const real = await fsp.realpath(abs).catch(() => null);
+        if (real) set.add(real);
       }
     }
   }
   return set;
 }
 
-async function walk(dir, depth = 0, out = []) {
+/**
+ * Collect every file under `dir`, following symlinks.
+ *
+ * readdir reports a link as neither a file nor a directory, so treating those
+ * two flags as the whole story meant a symlink was skipped entirely — and
+ * pointing a media folder at a NAS with `ln -s` is the ordinary way to set this
+ * up, which made the scan quietly find nothing. Each link is stat'd to see what
+ * it actually points at, and real paths are tracked so a link back up the tree
+ * cannot send this round forever.
+ */
+async function walk(dir, depth = 0, out = [], seen = new Set()) {
   if (depth > 6) return out;
+
+  const real = await fsp.realpath(dir).catch(() => null);
+  if (!real || seen.has(real)) return out;
+  seen.add(real);
+
   let entries;
   try {
     entries = await fsp.readdir(dir, { withFileTypes: true });
@@ -200,8 +222,16 @@ async function walk(dir, depth = 0, out = []) {
   for (const entry of entries) {
     if (entry.name.startsWith('.')) continue;
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) await walk(full, depth + 1, out);
-    else if (entry.isFile()) out.push(full);
+    let isDir = entry.isDirectory();
+    let isFile = entry.isFile();
+    if (entry.isSymbolicLink()) {
+      const target = await fsp.stat(full).catch(() => null);
+      if (!target) continue; // dangling link
+      isDir = target.isDirectory();
+      isFile = target.isFile();
+    }
+    if (isDir) await walk(full, depth + 1, out, seen);
+    else if (isFile) out.push(full);
   }
   return out;
 }
@@ -223,26 +253,38 @@ export async function scanFolder(dir) {
   if (!stat?.isDirectory()) throw Object.assign(new Error('Folder not found'), { status: 404 });
 
   const files = await walk(root);
-  const known = indexedFilePaths();
+  const known = await indexedFilePaths();
   const db = loadDb();
 
   const videos = files.filter((f) => VIDEO_EXTENSIONS.has(path.extname(f).toLowerCase()));
   const subs = files.filter((f) => SUBTITLE_EXTENSIONS.has(path.extname(f).toLowerCase()));
 
-  const report = { added: 0, skipped: 0, titles: [], newTitleIds: [], unplayable: [] };
+  const report = { added: 0, skipped: 0, titles: [], newTitleIds: [], unplayable: [], outsideRoots: [] };
 
   for (const file of videos.sort()) {
-    if (known.has(file)) {
+    // Judge a file by where it really lives. Following links is what makes a
+    // symlinked NAS folder work, and it is also the one way a file outside the
+    // roots could otherwise be smuggled in behind a link that looks local.
+    const realFile = await fsp.realpath(file).catch(() => null);
+    if (!realFile || !containedPath(realFile, allowedRoots())) {
+      report.outsideRoots.push(path.basename(file));
+      continue;
+    }
+    if (known.has(realFile) || known.has(file)) {
       report.skipped += 1;
       continue;
     }
+    known.add(realFile);
+
     const info = parseFilename(file);
     const ep = parseEpisode(file);
-    const fileStat = await fsp.stat(file).catch(() => null);
+    const fileStat = await fsp.stat(realFile).catch(() => null);
 
     const source = makeSource({
       kind: 'file',
-      path: file,
+      // Store where the bytes are, not the link that led here: a link the user
+      // later deletes must not take the library entry down with it.
+      path: realFile,
       height: info.height,
       size: fileStat?.size ?? null,
       label: info.height ? qualityLabel(info.height) : path.extname(file).slice(1).toUpperCase(),

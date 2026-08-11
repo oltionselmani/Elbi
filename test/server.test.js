@@ -325,6 +325,67 @@ test('scanning outside the permitted roots is rejected', async () => {
   assert.equal(res.status, 400);
 });
 
+/**
+ * Pointing a media folder at another disk with `ln -s` is the ordinary way to
+ * set up a self-hosted server. readdir reports a symlink as neither a file nor
+ * a directory, so the scanner used to walk straight past one — finding nothing,
+ * and saying nothing about it.
+ */
+test('the scanner follows symlinked files and folders', async () => {
+  const linkRoot = path.join(tmpRoot, 'linksrc');
+  const stage = path.join(scanDir, 'links');
+  await fsp.mkdir(path.join(linkRoot, 'nested'), { recursive: true });
+  await fsp.mkdir(stage, { recursive: true });
+
+  await fsp.writeFile(path.join(linkRoot, 'Linked Movie 2001 720p.mp4'), fakeVideo(1024));
+  await fsp.writeFile(path.join(linkRoot, 'nested', 'Deeper Movie 2002 720p.mp4'), fakeVideo(1024));
+
+  // One link to a single file, one to a whole folder.
+  await fsp.symlink(path.join(linkRoot, 'Linked Movie 2001 720p.mp4'), path.join(stage, 'Via Link 2001 720p.mp4'));
+  await fsp.symlink(path.join(linkRoot, 'nested'), path.join(stage, 'nested-link'));
+
+  // The link target is outside the roots, so it must be reported, not silently dropped.
+  const blocked = await call('POST', '/api/scan', { dir: stage });
+  assert.equal(blocked.status, 200);
+  assert.equal(blocked.body.added, 0, 'nothing outside the roots may be imported');
+  assert.equal(blocked.body.outsideRoots.length, 2, 'both link targets must be named in the report');
+  assert.ok(blocked.body.outsideRoots.some((f) => /Via Link/.test(f)));
+
+  // A dangling link is skipped rather than throwing.
+  await fsp.symlink(path.join(linkRoot, 'gone.mp4'), path.join(stage, 'Dangling 2003 720p.mp4'));
+  const dangling = await call('POST', '/api/scan', { dir: stage });
+  assert.equal(dangling.status, 200, 'a broken link must not fail the whole scan');
+});
+
+test('a symlink loop does not hang the scanner', async () => {
+  const loopDir = path.join(scanDir, 'loop');
+  await fsp.mkdir(path.join(loopDir, 'inner'), { recursive: true });
+  await fsp.writeFile(path.join(loopDir, 'Loop Movie 2004 720p.mp4'), fakeVideo(1024));
+  // A link pointing back at its own ancestor.
+  await fsp.symlink(loopDir, path.join(loopDir, 'inner', 'back'));
+
+  const started = Date.now();
+  const res = await call('POST', '/api/scan', { dir: loopDir });
+  assert.equal(res.status, 200);
+  assert.ok(Date.now() - started < 10_000, 'the scan must terminate');
+  assert.equal(res.body.added, 1, 'the real file is imported exactly once');
+});
+
+test('the same file reached by two links is imported once', async () => {
+  const twice = path.join(scanDir, 'twice');
+  await fsp.mkdir(twice, { recursive: true });
+  await fsp.writeFile(path.join(twice, 'Doubled 2005 720p.mp4'), fakeVideo(1024));
+  await fsp.symlink(path.join(twice, 'Doubled 2005 720p.mp4'), path.join(twice, 'Doubled Again 2005 720p.mp4'));
+
+  const first = await call('POST', '/api/scan', { dir: twice });
+  assert.equal(first.body.added, 1, 'one file on disk is one source, however many links point at it');
+
+  // And scanning again changes nothing.
+  const again = await call('POST', '/api/scan', { dir: twice });
+  assert.equal(again.body.added, 0, 're-scanning must be idempotent');
+  assert.ok(again.body.skipped >= 1);
+});
+
 test('watch progress is stored, and finishing a title clears it from Continue Watching', async () => {
   const profileId = 'p_olti';
 
