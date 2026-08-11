@@ -148,6 +148,16 @@ export async function downloadSource(title, source) {
     }
     await writing;
 
+    // A stream that ends early still ends cleanly, so "we reached the end" is
+    // not the same as "we got the film". Without this, a download cut short
+    // was filed as complete and only revealed itself later — offline, halfway
+    // through, with nothing to explain why the picture stopped.
+    if (total && job.received !== total) {
+      throw new Error(
+        `Only ${formatBytes(job.received)} of ${formatBytes(total)} arrived. The download was cut short.`,
+      );
+    }
+
     const index = loadIndex();
     index[key] = {
       url: canonicalUrl(title.id, source.id),
