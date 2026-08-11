@@ -56,6 +56,10 @@ export const config = {
   // Allow proxying/streaming remote URLs (Internet Archive browser, add-by-URL).
   allowRemote: process.env.ELBI_ALLOW_REMOTE !== '0',
   sessionTtlMs: envInt('ELBI_SESSION_DAYS', 30) * 24 * 60 * 60 * 1000,
+  // Believe X-Forwarded-For when naming the client. Only turn this on behind a
+  // reverse proxy you control — otherwise anyone can forge the header and dodge
+  // the login throttle by inventing a new address every request.
+  trustProxy: process.env.ELBI_TRUST_PROXY === '1',
 
   // --- metadata ------------------------------------------------------------
   // TMDB is the better provider but every one of its endpoints 401s without a

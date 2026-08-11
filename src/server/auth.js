@@ -13,8 +13,25 @@ export function authRequired() {
   return Boolean(config.password);
 }
 
+/**
+ * Sessions are signed with the server secret *and* the current password, so
+ * changing ELBI_PASSWORD silently invalidates every cookie that was minted
+ * under the old one. Signing with the secret alone meant a password change
+ * locked nobody out — the whole point of changing it.
+ *
+ * The password never leaves the server: it only ever contributes to the key,
+ * so the cookie itself stays a plain `expiry.mac` pair.
+ */
+function signingKey() {
+  return crypto.createHash('sha256')
+    .update(getSecret())
+    .update('\0')
+    .update(config.password)
+    .digest();
+}
+
 function sign(value) {
-  return crypto.createHmac('sha256', getSecret()).update(value).digest('base64url');
+  return crypto.createHmac('sha256', signingKey()).update(value).digest('base64url');
 }
 
 function mintToken() {
@@ -68,6 +85,74 @@ export function checkPassword(candidate) {
   const ha = crypto.createHash('sha256').update(a).digest();
   const hb = crypto.createHash('sha256').update(b).digest();
   return crypto.timingSafeEqual(ha, hb);
+}
+
+// --------------------------------------------------------------------------
+// login throttling
+//
+// Without this, the login endpoint answers a wrong password in about a
+// millisecond, so a shared household password falls to roughly 800 guesses a
+// second over a LAN. Failures are counted per client and the lockout doubles,
+// which costs a person who fat-fingers their own password almost nothing and
+// costs a script the entire keyspace.
+
+const FREE_ATTEMPTS = 5;
+const MAX_LOCKOUT_MS = 15 * 60 * 1000;
+const FORGET_AFTER_MS = 60 * 60 * 1000;
+
+const failures = new Map(); // client -> { count, lockedUntil, seen }
+
+/**
+ * Who is knocking. `X-Forwarded-For` is only believed when the operator opts in
+ * with ELBI_TRUST_PROXY: trusting it unconditionally would let an attacker
+ * spoof a fresh identity per request and walk straight past the limiter.
+ */
+export function clientKey(req) {
+  if (config.trustProxy) {
+    const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+    if (fwd) return fwd;
+  }
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+function prune(now) {
+  if (failures.size < 512) return;
+  for (const [key, entry] of failures) {
+    if (now - entry.seen > FORGET_AFTER_MS) failures.delete(key);
+  }
+}
+
+/** Milliseconds this client must wait, or 0 when it may try now. */
+export function loginLockout(key, now = Date.now()) {
+  const entry = failures.get(key);
+  if (!entry) return 0;
+  if (now - entry.seen > FORGET_AFTER_MS) {
+    failures.delete(key);
+    return 0;
+  }
+  return Math.max(0, entry.lockedUntil - now);
+}
+
+export function noteLoginFailure(key, now = Date.now()) {
+  prune(now);
+  const entry = failures.get(key) || { count: 0, lockedUntil: 0, seen: now };
+  entry.count += 1;
+  entry.seen = now;
+  if (entry.count > FREE_ATTEMPTS) {
+    const step = entry.count - FREE_ATTEMPTS; // 1, 2, 3, …
+    entry.lockedUntil = now + Math.min(2 ** step * 1000, MAX_LOCKOUT_MS);
+  }
+  failures.set(key, entry);
+  return loginLockout(key, now);
+}
+
+export function noteLoginSuccess(key) {
+  failures.delete(key);
+}
+
+/** Test hook: forget every recorded failure. */
+export function resetLoginThrottle() {
+  failures.clear();
 }
 
 export function sessionCookie(secureHint) {

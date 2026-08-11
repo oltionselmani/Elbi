@@ -91,6 +91,43 @@ test('srtToVtt produces a valid WebVTT body', () => {
   assert.ok(!/^\s*1\s*$/m.test(vtt), 'cue index lines should be dropped');
 });
 
+/**
+ * WebVTT wants a two-digit hour. Some SubRip writers emit "0:00:01,000", and a
+ * single one of those is enough for the browser to throw the whole file away —
+ * so the converter has to pad rather than pass the timestamp through.
+ */
+test('srtToVtt repairs the timestamp shapes SubRip writers actually emit', () => {
+  const cases = {
+    'single-digit hour': '1\n0:00:01,000 --> 0:00:04,000\nHello\n\n2\n0:00:05,000 --> 0:00:08,000\nWorld\n',
+    'dot instead of comma': '1\n00:00:01.000 --> 00:00:04.000\nHello\n\n2\n00:00:05.000 --> 00:00:08.000\nWorld\n',
+    'short fraction': '1\n0:00:01,5 --> 0:00:04,25\nHello\n\n2\n00:00:05,000 --> 00:00:08,000\nWorld\n',
+    'no cue indices': '00:00:01,000 --> 00:00:04,000\nHello\n\n00:00:05,000 --> 00:00:08,000\nWorld\n',
+    'CRLF line endings': '1\r\n00:00:01,000 --> 00:00:04,000\r\nHello\r\n\r\n2\r\n00:00:05,000 --> 00:00:08,000\r\nWorld\r\n',
+  };
+
+  for (const [label, srt] of Object.entries(cases)) {
+    const vtt = srtToVtt(srt);
+    const cues = vtt.split(/\n\n+/).slice(1).filter(Boolean);
+    assert.equal(cues.length, 2, `${label}: expected two separate cues`);
+    for (const cue of cues) {
+      const timing = cue.split('\n')[0];
+      assert.match(
+        timing, /^\d{2,}:[0-5]\d:[0-5]\d\.\d{3} --> \d{2,}:[0-5]\d:[0-5]\d\.\d{3}$/,
+        `${label}: "${timing}" is not a timing line the browser will accept`,
+      );
+    }
+    assert.ok(vtt.includes('Hello') && vtt.includes('World'), `${label}: lost the caption text`);
+  }
+
+  // A fraction is padded on the right: ",5" is half a second, not five ms.
+  assert.ok(srtToVtt('1\n0:00:01,5 --> 0:00:04,000\nA\n').includes('00:00:01.500'));
+});
+
+test('srtToVtt leaves an hour of runtime intact', () => {
+  const vtt = srtToVtt('1\n01:23:45,678 --> 01:23:48,000\nLate line\n');
+  assert.ok(vtt.includes('01:23:45.678 --> 01:23:48.000'), vtt);
+});
+
 test('qualityLabel names the common resolutions', () => {
   assert.equal(qualityLabel(2160), '4K');
   assert.equal(qualityLabel(1440), '1440p');

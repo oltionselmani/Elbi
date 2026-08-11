@@ -211,6 +211,24 @@ test('static file serving refuses path traversal', async () => {
   assert.notEqual(res.status, 200);
 });
 
+/**
+ * A half-written percent-escape is a malformed request, not a server fault.
+ * decodeURIComponent throws on these, and letting that propagate answered any
+ * passing crawler with a 500 and a stack trace in the log.
+ */
+test('a malformed percent-escape is a client error, never a 500', async () => {
+  for (const bad of ['/%', '/a%zz', '/art/%', '/%c0%80', '/js/%e0%a4%a', '/%00', '/art/%zz.png']) {
+    const res = await fetch(`${base}${bad}`);
+    assert.ok(res.status < 500, `${bad} answered ${res.status}`);
+    assert.ok(res.status >= 400, `${bad} answered ${res.status}, expected a client error`);
+  }
+});
+
+test('a NUL byte cannot truncate a static path', async () => {
+  const res = await fetch(`${base}/index.html%00.txt`);
+  assert.notEqual(res.status, 200);
+});
+
 test('scan imports movies and groups episodes into a series', async () => {
   await fsp.writeFile(path.join(scanDir, 'Deep Water 2018 720p.mp4'), fakeVideo(2048));
   await fsp.writeFile(path.join(scanDir, 'Night Shift S01E01 1080p.mp4'), fakeVideo(2048));

@@ -183,20 +183,31 @@ export function formatBytes(bytes) {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`;
 }
 
+/** Matches a SubRip timestamp, tolerating the variants writers actually emit. */
+const SRT_TIMESTAMP = /(\d{1,3}):([0-5]\d):([0-5]\d)[,.](\d{1,3})/g;
+
 /**
  * Convert SubRip to WebVTT so the browser's <track> element can use it.
+ *
+ * Two details decide whether a real-world file survives this:
  *
  * The cue-index line is dropped with a horizontal-whitespace class rather than
  * `\s`: `\s` matches newlines, so it would also eat the blank line separating
  * the previous cue from this one, welding every cue in the file into a single
  * block that the parser then reads as one long caption.
+ *
+ * Timestamps are then rebuilt into WebVTT's exact `HH:MM:SS.mmm`. SubRip uses a
+ * comma for the decimal, and some writers emit a single-digit hour
+ * ("0:00:01,000"), which WebVTT rejects outright — one unpadded hour is enough
+ * for the browser to discard every cue in the file.
  */
 export function srtToVtt(srt) {
   const body = String(srt)
     .replace(/^﻿/, '')
     .replace(/\r\n?/g, '\n')
-    .replace(/^[ \t]*\d+[ \t]*\n(?=\d{2}:\d{2}:\d{2}[,.]\d{3})/gm, '')
-    .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+    .replace(/^[ \t]*\d+[ \t]*\n(?=\d{1,3}:\d{2}:\d{2}[,.]\d{1,3})/gm, '')
+    .replace(SRT_TIMESTAMP, (_m, h, m, s, frac) =>
+      `${h.padStart(2, '0')}:${m}:${s}.${frac.padEnd(3, '0').slice(0, 3)}`);
   return `WEBVTT\n\n${body.trim()}\n`;
 }
 

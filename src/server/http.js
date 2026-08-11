@@ -21,8 +21,8 @@ export function json(res, status, data, headers = {}) {
   });
 }
 
-export function fail(res, status, message, extra = {}) {
-  json(res, status, { error: message, ...extra });
+export function fail(res, status, message, extra = {}, headers = {}) {
+  json(res, status, { error: message, ...extra }, headers);
 }
 
 const MAX_JSON_BODY = 2 * 1024 * 1024;
@@ -132,7 +132,17 @@ async function streamTo(res, stream) {
 
 /** Resolve a URL path inside a static root, refusing traversal. */
 export function staticTarget(rootDir, urlPath) {
-  const decoded = decodeURIComponent(urlPath.split('?')[0]);
+  let decoded;
+  try {
+    decoded = decodeURIComponent(urlPath.split('?')[0]);
+  } catch {
+    // A half-written escape like "/%" or "/a%zz" is a malformed request, not a
+    // server fault: decodeURIComponent throws, and letting that propagate turned
+    // every such request into a 500.
+    return null;
+  }
+  // A NUL byte truncates the path inside libc, so "/x\0.png" could reach "/x".
+  if (decoded.includes('\0')) return null;
   const normalized = path.posix.normalize(decoded).replace(/^(\.\.[/\\])+/, '');
   const target = path.join(rootDir, normalized);
   const resolvedRoot = path.resolve(rootDir);

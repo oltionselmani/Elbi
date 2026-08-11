@@ -2,7 +2,10 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { config, allowedRoots } from './config.js';
 import { json, fail, readJson, readBody, serveFile, send } from './http.js';
-import { authRequired, checkPassword, sessionCookie, clearCookie, isAuthed } from './auth.js';
+import {
+  authRequired, checkPassword, sessionCookie, clearCookie, isAuthed,
+  clientKey, loginLockout, noteLoginFailure, noteLoginSuccess,
+} from './auth.js';
 import { loadDb, saveDb } from './store.js';
 import {
   findTitle, findSource, findSubtitle, playables, sourceFilePath, makeSource, makeTitle,
@@ -58,8 +61,20 @@ async function handleAuth(req, res, route, method) {
     return json(res, 200, { authRequired: authRequired(), authed: isAuthed(req) });
   }
   if (route[1] === 'login' && method === 'POST') {
+    const who = clientKey(req);
+    const waiting = loginLockout(who);
+    if (waiting > 0) {
+      const seconds = Math.ceil(waiting / 1000);
+      return fail(res, 429, `Too many attempts. Try again in ${seconds}s.`, {
+        retryAfter: seconds,
+      }, { 'Retry-After': String(seconds) });
+    }
     const body = await readJson(req);
-    if (!checkPassword(body.password)) return fail(res, 401, 'Wrong password.');
+    if (!checkPassword(body.password)) {
+      const locked = noteLoginFailure(who);
+      return fail(res, 401, 'Wrong password.', locked > 0 ? { retryAfter: Math.ceil(locked / 1000) } : {});
+    }
+    noteLoginSuccess(who);
     const secure = (req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https';
     return json(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(secure) });
   }
