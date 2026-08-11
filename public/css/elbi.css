@@ -420,6 +420,49 @@ h1, h2, h3, h4 {
   text-transform: uppercase; letter-spacing: .14em;
 }
 
+/* Library filters. Each group is labelled in the same small-caps mono the
+   section hints use, and the row scrolls sideways on a phone rather than
+   wrapping into a wall of chips. */
+.filters {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: .5rem 1.4rem; margin: -.35rem 0 1.35rem;
+  padding-bottom: .9rem; border-bottom: 1px solid var(--edge-soft);
+}
+.filters__group { display: flex; align-items: center; gap: .55rem; min-width: 0; }
+.filters__label {
+  font-family: var(--mono); font-size: .6rem; text-transform: uppercase;
+  letter-spacing: .16em; color: var(--haze-dim); white-space: nowrap;
+}
+.filters__chips { display: flex; gap: .3rem; flex-wrap: wrap; min-width: 0; }
+.filters__clear { margin-left: auto; font-size: .75rem; padding: .35rem .8rem; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: .34rem;
+  padding: .32rem .68rem; border-radius: 999px;
+  border: 1px solid var(--edge); background: transparent;
+  color: var(--haze); font-size: .78rem; font-weight: 500;
+  cursor: pointer; white-space: nowrap;
+  transition: color .16s var(--ease-out), border-color .16s var(--ease-out), background .16s var(--ease-out);
+}
+.chip:hover { color: #e8e6e1; border-color: var(--haze-dim); }
+.chip small {
+  font-family: var(--mono); font-size: .6rem; color: var(--haze-dim);
+  font-variant-numeric: tabular-nums;
+}
+.chip.is-active {
+  color: #fff; border-color: transparent;
+  background: linear-gradient(180deg, var(--lamp-hot), var(--lamp));
+}
+.chip.is-active small { color: rgba(255, 255, 255, .75); }
+
+@media (max-width: 760px) {
+  .filters { gap: .7rem 1rem; }
+  .filters__group { width: 100%; }
+  .filters__chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .filters__chips::-webkit-scrollbar { display: none; }
+  .filters__clear { margin-left: 0; }
+}
+
 .empty {
   border: 1px dashed var(--edge); border-radius: var(--radius-lg);
   padding: 3rem 1.5rem; text-align: center; color: var(--haze);

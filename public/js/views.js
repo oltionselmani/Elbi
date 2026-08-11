@@ -1,6 +1,9 @@
 import { $, el, clear, formatTime, formatRuntime, formatBytes, qualityLabel, toast, hashColor, badgeFor, badgeFontSize, nameFontSize } from './util.js';
 import { api, streamUrl } from './api.js';
 import {
+  SORTS, STATUSES, TYPES, applyView, genreCounts, defaultView, normalizeView, isDefaultView,
+} from './filters.js';
+import {
   state, playablesOf, progressFor, resumePointFor, continueWatching, allGenres, searchTitles,
   titleById, hasPlayableSource, upsertTitle, removeTitleLocal, refresh,
 } from './state.js';
@@ -291,24 +294,124 @@ function emptyLibrary() {
 // ---------------------------------------------------------------------------
 // library / search / results grid
 
+const LIBRARY_VIEW_KEY = 'elbi.libraryView';
+
+/** The saved filter/sort choice, so it survives a reload. */
+function libraryView() {
+  try {
+    return normalizeView(JSON.parse(localStorage.getItem(LIBRARY_VIEW_KEY) || '{}'));
+  } catch {
+    return defaultView();
+  }
+}
+
+function setLibraryView(patch) {
+  const next = normalizeView({ ...libraryView(), ...patch });
+  try {
+    localStorage.setItem(LIBRARY_VIEW_KEY, JSON.stringify(next));
+  } catch { /* private browsing; the view just won't persist */ }
+  renderLibrary();
+}
+
+/** Where a title stands for the person watching: not started, part-way, done. */
+function watchStatusOf(title) {
+  const items = playablesOf(title);
+  if (!items.length) return 'unwatched';
+  let started = 0;
+  let finished = 0;
+  for (const item of items) {
+    const entry = progressFor(title.id, item.episodeId);
+    if (!entry) continue;
+    if (entry.finished) finished += 1;
+    else if (entry.position > 0) started += 1;
+  }
+  if (finished === items.length) return 'finished';
+  if (started || finished) return 'watching';
+  return 'unwatched';
+}
+
 export function renderLibrary() {
   const host = clear(view());
   if (!state.titles.length) {
     host.append(emptyLibrary());
     return;
   }
-  const sorted = [...state.titles].sort((a, b) => a.name.localeCompare(b.name));
-  const counts = {
-    titles: state.titles.length,
-    sources: state.titles.reduce((n, t) => n + t.sourceCount, 0),
-  };
+
+  const current = libraryView();
+  const shown = applyView(state.titles, current, { statusOf: watchStatusOf });
+  const sources = shown.reduce((n, t) => n + t.sourceCount, 0);
+
+  const hint = shown.length === state.titles.length
+    ? `${state.titles.length} titles · ${sources} video files`
+    : `${shown.length} of ${state.titles.length} titles · ${sources} video files`;
+
   host.append(el('section.section', {}, [
     el('div.section__head', {}, [
       el('h2', { text: 'My library' }),
-      el('span.section__hint', { text: `${counts.titles} titles · ${counts.sources} video files` }),
+      el('span.section__hint', { text: hint }),
     ]),
-    el('div.grid', {}, sorted.map((t) => titleCard(t, { poster: true }))),
+    libraryToolbar(current),
+    shown.length
+      ? el('div.grid', {}, shown.map((t) => titleCard(t, { poster: true })))
+      : el('div.empty', {}, [
+        el('p', { text: 'Nothing in your library matches those filters.' }),
+        el('button.btn.btn--primary', {
+          type: 'button',
+          onclick: () => setLibraryView(defaultView()),
+        }, ['Show everything']),
+      ]),
   ]));
+}
+
+/** Sort order, media type, watch status and genre — one row above the grid. */
+function libraryToolbar(current) {
+  const bar = el('div.filters');
+
+  const group = (label, children) => el('div.filters__group', {}, [
+    el('span.filters__label', { text: label }),
+    el('div.filters__chips', {}, children),
+  ]);
+
+  const chip = (text, active, onclick, extra = '') => el(`button.chip${active ? '.is-active' : ''}`, {
+    type: 'button',
+    'aria-pressed': active ? 'true' : 'false',
+    onclick,
+  }, [el('span', { text }), extra ? el('small', { text: extra }) : null].filter(Boolean));
+
+  bar.append(group('Sort', Object.entries(SORTS).map(([key, { label }]) => chip(
+    label, current.sort === key, () => setLibraryView({ sort: key }),
+  ))));
+
+  bar.append(group('Show', Object.entries(TYPES).map(([key, label]) => chip(
+    label, current.type === key, () => setLibraryView({ type: key }),
+  ))));
+
+  bar.append(group('Watched', Object.entries(STATUSES).map(([key, label]) => chip(
+    label, current.status === key, () => setLibraryView({ status: key }),
+  ))));
+
+  // Only offer genres that exist, so the row does not fill with dead ends.
+  const genres = genreCounts(state.titles);
+  if (genres.length) {
+    bar.append(group('Genre', [
+      chip('Any', !current.genre, () => setLibraryView({ genre: '' })),
+      ...genres.slice(0, 14).map(({ name, count }) => chip(
+        name,
+        current.genre.toLowerCase() === name.toLowerCase(),
+        () => setLibraryView({ genre: current.genre.toLowerCase() === name.toLowerCase() ? '' : name }),
+        String(count),
+      )),
+    ]));
+  }
+
+  if (!isDefaultView(current)) {
+    bar.append(el('button.btn.btn--ghost.filters__clear', {
+      type: 'button',
+      onclick: () => setLibraryView(defaultView()),
+    }, ['Clear filters']));
+  }
+
+  return bar;
 }
 
 export function renderSearch(query) {
