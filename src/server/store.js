@@ -42,6 +42,9 @@ function emptyDb() {
       autoMatchMetadata: true,
       // Minutes preselected in the player's sleep timer menu.
       sleepTimerMinutes: 45,
+      // Show which other people in the house have already seen a title. Only
+      // the fact is shared, never how far anyone got.
+      showWhoWatched: true,
     },
   };
 }

@@ -431,6 +431,84 @@ test('each profile keeps its own watch history', async () => {
   assert.ok((await call('GET', '/api/library?profile=p_olti')).body.progress[`${titleId}:-`]);
 });
 
+/**
+ * "Has anyone seen this yet?" answered without asking. Only the fact is
+ * shared — how far anyone got stays inside their own profile.
+ */
+test('the library reports who else in the house has seen a title', async () => {
+  await call('POST', `/api/reset-profile/p_olti`);
+  await call('POST', `/api/reset-profile/p_elbi`);
+  await call('POST', `/api/reset-profile/p_oltion`);
+  await call('POST', `/api/reset-profile/p_elbasana`);
+
+  // Olti finishes it; Elbi is part-way.
+  await call('POST', '/api/progress', {
+    profileId: 'p_olti', titleId, position: 5400, duration: 5400,
+  });
+  await call('POST', '/api/progress', {
+    profileId: 'p_elbi', titleId, position: 600, duration: 5400,
+  });
+
+  const lib = await call('GET', '/api/library?profile=p_oltion');
+  const seen = lib.body.watchedBy[titleId];
+  assert.ok(Array.isArray(seen), 'watchedBy should list this title');
+
+  const byId = Object.fromEntries(seen.map((p) => [p.id, p]));
+  assert.equal(byId.p_olti.state, 'finished');
+  assert.equal(byId.p_elbi.state, 'watching');
+  assert.equal(byId.p_olti.name, 'Olti', 'the name is included so the UI need not look it up');
+  assert.ok(byId.p_olti.color, 'and the colour, so faces match the profile picker');
+  assert.equal(byId.p_oltion, undefined, 'someone who never opened it is not listed');
+
+  // The fact is shared; the position is not.
+  assert.deepEqual(lib.body.progress, {}, "another profile's position must not leak");
+  assert.equal(seen.some((p) => 'position' in p), false, 'no positions in watchedBy');
+});
+
+test('a series counts as seen only when every episode is finished', async () => {
+  const series = (await call('GET', '/api/library?profile=p_olti')).body.titles
+    .find((t) => t.type === 'series' && t.episodeCount >= 2);
+  assert.ok(series, 'the scan should have produced a two-episode series');
+
+  const episodes = series.seasons.flatMap((s) => s.episodes);
+  await call('POST', '/api/progress', {
+    profileId: 'p_elbasana', titleId: series.id, episodeId: episodes[0].id, position: 100, duration: 100,
+  });
+
+  let seen = (await call('GET', '/api/library?profile=p_olti')).body.watchedBy[series.id] || [];
+  assert.equal(seen.find((p) => p.id === 'p_elbasana')?.state, 'watching',
+    'one episode down out of two is still in progress');
+
+  await call('POST', '/api/progress', {
+    profileId: 'p_elbasana', titleId: series.id, episodeId: episodes[1].id, position: 100, duration: 100,
+  });
+  seen = (await call('GET', '/api/library?profile=p_olti')).body.watchedBy[series.id] || [];
+  assert.equal(seen.find((p) => p.id === 'p_elbasana')?.state, 'finished',
+    'every episode finished means the series is finished');
+});
+
+test('a title nobody has opened is absent from watchedBy entirely', async () => {
+  const lib = await call('GET', '/api/library?profile=p_olti');
+  const untouched = lib.body.titles.find((t) => !lib.body.watchedBy[t.id]);
+  assert.ok(untouched, 'expected at least one title nobody has watched');
+  assert.equal(lib.body.watchedBy[untouched.id], undefined);
+});
+
+test('sharing who watched can be turned off', async () => {
+  const off = await call('PATCH', '/api/settings', { showWhoWatched: false });
+  assert.equal(off.body.settings.showWhoWatched, false);
+  const on = await call('PATCH', '/api/settings', { showWhoWatched: true });
+  assert.equal(on.body.settings.showWhoWatched, true);
+});
+
+test('the films and shows shelves are served as app routes', async () => {
+  for (const route of ['/films', '/shows']) {
+    const res = await fetch(`${base}${route}`);
+    assert.equal(res.status, 200, `${route} should render the app shell`);
+    assert.match(await res.text(), /<!doctype html>/i);
+  }
+});
+
 test('resume settings are stored and clamped', async () => {
   assert.equal((await call('PATCH', '/api/settings', { resumeRewind: 12 })).body.settings.resumeRewind, 12);
   assert.equal((await call('PATCH', '/api/settings', { resumeRewind: 999 })).body.settings.resumeRewind, 60);

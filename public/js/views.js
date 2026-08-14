@@ -33,6 +33,8 @@ export function titleCard(title, { poster = false, item = null, showProgress = t
 
   const artNode = artBox(art, title.name);
   artNode.append(el('div.card__badges', {}, badges));
+  const seen = seenByOthers(title.id);
+  if (seen.length) artNode.append(seenStrip(seen));
   artNode.append(el('div.card__play', {}, [
     elSvg('<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7L8 5Z"/></svg>'),
   ]));
@@ -57,6 +59,41 @@ export function titleCard(title, { poster = false, item = null, showProgress = t
   ]);
   if (poster) card.classList.add('card--poster');
   return card;
+}
+
+/**
+ * Everyone *except* you who has started or finished this title.
+ *
+ * Yours is left out on purpose: your own progress bar is already on the card,
+ * and the point of this row is the question you'd otherwise have to ask out
+ * loud — "has anyone seen this yet?"
+ */
+export function seenByOthers(titleId) {
+  if (state.settings?.showWhoWatched === false) return [];
+  return (state.watchedBy?.[titleId] || []).filter((p) => p.id !== state.activeProfile);
+}
+
+/** A row of small initials over the artwork: who in the house has seen it. */
+function seenStrip(people) {
+  const strip = el('div.seenby', {
+    title: people.map((p) => `${p.name} — ${p.state === 'finished' ? 'watched' : 'part-way'}`).join('\n'),
+  });
+  for (const person of people.slice(0, 4)) {
+    // "Olti" and "Oltion" both start with O, so badgeFor hands back however
+    // many letters it takes to tell the household apart — which means the chip
+    // has to grow sideways and shrink its type rather than assume one letter.
+    const label = badgeFor(person.name, state.profiles.map((p) => p.name));
+    strip.append(el(`span.seenby__face${person.state === 'watching' ? '.is-partial' : ''}`, {
+      text: label,
+      style: {
+        '--who': person.color || hashColor(person.name),
+        fontSize: badgeFontSize(label, 0.9),
+      },
+      'aria-label': `${person.name} has ${person.state === 'finished' ? 'watched this' : 'started this'}`,
+    }));
+  }
+  if (people.length > 4) strip.append(el('span.seenby__more', { text: `+${people.length - 4}` }));
+  return strip;
 }
 
 /**
@@ -330,27 +367,49 @@ function watchStatusOf(title) {
   return 'unwatched';
 }
 
-export function renderLibrary() {
+/**
+ * The library grid. `only` pins it to films or series — that is what the Films
+ * and TV shows shelves are — in which case the type chips are dropped, since
+ * the shelf you are standing on already answers that question.
+ */
+export function renderLibrary({ only = null, heading = 'My library' } = {}) {
   const host = clear(view());
+  const pool = only
+    ? state.titles.filter((t) => (t.type === 'series' ? 'series' : 'movie') === only)
+    : state.titles;
+
   if (!state.titles.length) {
     host.append(emptyLibrary());
     return;
   }
+  if (!pool.length) {
+    host.append(el('section.section', {}, [
+      el('div.section__head', {}, [el('h2', { text: heading })]),
+      el('div.empty', {}, [
+        el('p', {
+          text: only === 'series'
+            ? 'No TV shows yet. Files named like "Show.S01E02.mkv" are grouped into a series automatically.'
+            : 'No films yet — everything in your library is a series.',
+        }),
+      ]),
+    ]));
+    return;
+  }
 
-  const current = libraryView();
-  const shown = applyView(state.titles, current, { statusOf: watchStatusOf });
+  const current = only ? { ...libraryView(), type: 'all' } : libraryView();
+  const shown = applyView(pool, current, { statusOf: watchStatusOf });
   const sources = shown.reduce((n, t) => n + t.sourceCount, 0);
 
-  const hint = shown.length === state.titles.length
-    ? `${state.titles.length} titles · ${sources} video files`
-    : `${shown.length} of ${state.titles.length} titles · ${sources} video files`;
+  const hint = shown.length === pool.length
+    ? `${pool.length} titles · ${sources} video files`
+    : `${shown.length} of ${pool.length} titles · ${sources} video files`;
 
   host.append(el('section.section', {}, [
     el('div.section__head', {}, [
-      el('h2', { text: 'My library' }),
+      el('h2', { text: heading }),
       el('span.section__hint', { text: hint }),
     ]),
-    libraryToolbar(current),
+    libraryToolbar(current, { pool, hideType: Boolean(only) }),
     shown.length
       ? el('div.grid', {}, shown.map((t) => titleCard(t, { poster: true })))
       : el('div.empty', {}, [
@@ -364,7 +423,7 @@ export function renderLibrary() {
 }
 
 /** Sort order, media type, watch status and genre — one row above the grid. */
-function libraryToolbar(current) {
+function libraryToolbar(current, { pool = state.titles, hideType = false } = {}) {
   const bar = el('div.filters');
 
   const group = (label, children) => el('div.filters__group', {}, [
@@ -382,16 +441,18 @@ function libraryToolbar(current) {
     label, current.sort === key, () => setLibraryView({ sort: key }),
   ))));
 
-  bar.append(group('Show', Object.entries(TYPES).map(([key, label]) => chip(
-    label, current.type === key, () => setLibraryView({ type: key }),
-  ))));
+  if (!hideType) {
+    bar.append(group('Show', Object.entries(TYPES).map(([key, label]) => chip(
+      label, current.type === key, () => setLibraryView({ type: key }),
+    ))));
+  }
 
   bar.append(group('Watched', Object.entries(STATUSES).map(([key, label]) => chip(
     label, current.status === key, () => setLibraryView({ status: key }),
   ))));
 
-  // Only offer genres that exist, so the row does not fill with dead ends.
-  const genres = genreCounts(state.titles);
+  // Only offer genres that exist on this shelf, so no chip is a dead end.
+  const genres = genreCounts(pool);
   if (genres.length) {
     bar.append(group('Genre', [
       chip('Any', !current.genre, () => setLibraryView({ genre: '' })),
@@ -536,6 +597,12 @@ function detailContent(title, focusEpisodeId = null) {
       castNames.length ? el('dd', { text: castNames.slice(0, 8).join(', ') }) : null,
       title.voteAverage ? el('dt', { text: 'Score' }) : null,
       title.voteAverage ? el('dd', { text: `${title.voteAverage} / 10` }) : null,
+      seenByOthers(title.id).length ? el('dt', { text: 'Seen by' }) : null,
+      seenByOthers(title.id).length ? el('dd', {
+        text: seenByOthers(title.id)
+          .map((p) => (p.state === 'finished' ? p.name : `${p.name} (part-way)`))
+          .join(', '),
+      }) : null,
       el('dt', { text: 'Added' }),
       el('dd', { text: new Date(title.addedAt).toLocaleDateString() }),
       el('dt', { text: 'Origin' }),

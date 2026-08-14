@@ -627,6 +627,35 @@ h1, h2, h3, h4 {
   position: absolute; top: .5rem; left: .5rem; z-index: 2;
   display: flex; gap: .3rem; flex-wrap: wrap;
 }
+/* Who else in the house has seen this. Sits opposite the quality pills so the
+   two never collide, and reads as a row of faces rather than a status badge. */
+.seenby {
+  position: absolute; top: .5rem; right: .5rem; z-index: 2;
+  display: flex; align-items: center;
+}
+.seenby__face {
+  /* A pill, not a circle: the initials are only as short as the household
+     allows, so "Olti" and "Oltion" both have to stay readable. */
+  min-width: 22px; height: 22px; padding: 0 .34rem; margin-left: -5px;
+  display: grid; place-items: center;
+  border-radius: 999px; border: 1.5px solid rgba(8, 8, 12, .85);
+  background: var(--who, var(--lamp)); color: #fff;
+  font-family: var(--mono); font-weight: 500; line-height: 1;
+  letter-spacing: .02em; text-transform: uppercase; white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .45);
+}
+.seenby__face:first-child { margin-left: 0; }
+/* Part-way through: the same face, dimmed and outlined rather than filled. */
+.seenby__face.is-partial {
+  background: rgba(8, 8, 12, .8);
+  color: var(--who, var(--lamp));
+  border-color: var(--who, var(--lamp));
+}
+.seenby__more {
+  margin-left: .2rem; font-family: var(--mono); font-size: .58rem;
+  color: var(--haze); text-shadow: 0 1px 3px rgba(0, 0, 0, .8);
+}
+
 .card__play {
   position: absolute; inset: 0; z-index: 2; display: grid; place-items: center;
   opacity: 0; background: rgba(6, 6, 10, .34);

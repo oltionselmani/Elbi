@@ -9,7 +9,10 @@ import { json, fail, serveFile, staticTarget } from './src/server/http.js';
 import { isAuthed, authRequired } from './src/server/auth.js';
 import { loadDb, flush } from './src/server/store.js';
 
-const SPA_ROUTES = ['/', '/browse', '/search', '/library', '/discover', '/watch', '/settings', '/profiles'];
+const SPA_ROUTES = [
+  '/', '/browse', '/search', '/library', '/films', '/shows',
+  '/discover', '/watch', '/settings', '/profiles',
+];
 
 const server = http.createServer(async (req, res) => {
   const started = Date.now();

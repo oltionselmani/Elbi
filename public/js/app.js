@@ -18,6 +18,10 @@ function currentRoute() {
   const path = location.pathname;
   const params = new URLSearchParams(location.search);
   if (path.startsWith('/library')) return { name: 'library' };
+  // Films and shows are the library, pinned to one kind — a shelf each, rather
+  // than one grid you have to filter every time.
+  if (path.startsWith('/films')) return { name: 'films', only: 'movie' };
+  if (path.startsWith('/shows')) return { name: 'shows', only: 'series' };
   if (path.startsWith('/discover')) return { name: 'discover', q: params.get('q') || '' };
   if (path.startsWith('/search')) return { name: 'search', q: params.get('q') || '' };
   return { name: 'browse' };
@@ -44,6 +48,8 @@ function render() {
     renderSearch(route.q);
   } else if (route.name === 'library') {
     renderLibrary();
+  } else if (route.name === 'films' || route.name === 'shows') {
+    renderLibrary({ only: route.only, heading: route.name === 'films' ? 'Films' : 'TV shows' });
   } else if (route.name === 'discover') {
     if (search.value) search.value = '';
     renderDiscover(route.q);
@@ -62,7 +68,12 @@ function librarySignature() {
     .join('|');
   const watched = Object.keys(state.progress).sort().join(',');
   const finished = Object.values(state.progress).filter((p) => p.finished).length;
-  return `${titles}#${state.myList.join(',')}#${watched}#${finished}#${state.offlineSources.size}`;
+  // Someone else finishing a film changes the cards, so it has to count here
+  // too — otherwise their face never appears until a full reload.
+  const others = Object.entries(state.watchedBy || {})
+    .map(([id, people]) => `${id}:${people.map((p) => `${p.id}${p.state}`).join('')}`)
+    .sort().join(',');
+  return `${titles}#${state.myList.join(',')}#${watched}#${finished}#${state.offlineSources.size}#${others}`;
 }
 
 function updateChrome() {

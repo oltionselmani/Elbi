@@ -12,6 +12,8 @@ export const state = {
   titles: [],
   profiles: [],
   progress: {},
+  // titleId -> [{ id, name, color, state }] for everyone in the household.
+  watchedBy: {},
   myList: [],
   settings: {
     seekStep: 5,
@@ -78,6 +80,7 @@ export async function refresh() {
   state.titles = data.titles;
   state.profiles = data.profiles;
   state.progress = data.progress || {};
+  state.watchedBy = data.watchedBy || {};
   state.myList = data.myList || [];
   state.settings = data.settings;
   state.server = data.server;

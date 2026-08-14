@@ -93,6 +93,7 @@ function handleLibrary(req, res, url, method) {
   const profileId = url.searchParams.get('profile') || db.profiles[0]?.id;
   return json(res, 200, {
     titles: db.titles.map(publicTitle),
+    watchedBy: watchedByTitle(db),
     profiles: db.profiles,
     settings: db.settings,
     progress: db.progress[profileId] || {},
@@ -107,6 +108,44 @@ function handleLibrary(req, res, url, method) {
       scanRoots: allowedRoots(),
     },
   });
+}
+
+/**
+ * Who in the household has already seen each title.
+ *
+ * Progress itself stays private per profile — this is only the fact that a
+ * person watched something, so nobody has to ask "have you seen this yet?".
+ * A series counts as finished only when every episode is; one episode left
+ * part-way keeps the whole thing marked as still going.
+ */
+function watchedByTitle(db) {
+  const out = {};
+  for (const title of db.titles) {
+    const items = playables(title);
+    if (!items.length) continue;
+
+    const who = [];
+    for (const profile of db.profiles) {
+      const entries = db.progress[profile.id] || {};
+      let finished = 0;
+      let started = 0;
+      for (const item of items) {
+        const entry = entries[item.key];
+        if (!entry) continue;
+        if (entry.finished) finished += 1;
+        else if (entry.position > 0) started += 1;
+      }
+      if (!finished && !started) continue;
+      who.push({
+        id: profile.id,
+        name: profile.name,
+        color: profile.color,
+        state: finished === items.length ? 'finished' : 'watching',
+      });
+    }
+    if (who.length) out[title.id] = who;
+  }
+  return out;
 }
 
 // --------------------------------------------------------------------------
@@ -692,6 +731,7 @@ async function handleSettings(req, res, method) {
   }
   if ('skipIntro' in body) db.settings.skipIntro = Boolean(body.skipIntro);
   if ('autoMatchMetadata' in body) db.settings.autoMatchMetadata = Boolean(body.autoMatchMetadata);
+  if ('showWhoWatched' in body) db.settings.showWhoWatched = Boolean(body.showWhoWatched);
   if ('sleepTimerMinutes' in body) db.settings.sleepTimerMinutes = clamp(Number(body.sleepTimerMinutes), 5, 240, 45);
   if ('subtitleLanguage' in body) {
     try {
