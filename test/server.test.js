@@ -509,6 +509,43 @@ test('the films and shows shelves are served as app routes', async () => {
   }
 });
 
+/**
+ * The subtitle choice used to live in localStorage, so turning subtitles off
+ * on a laptop meant nothing on a phone. It belongs to the profile now.
+ */
+test('a subtitle choice follows the profile, not the device', async () => {
+  const set = await call('POST', '/api/subtitle-choice', {
+    profileId: 'p_olti', titleId, label: 'Shqip',
+  });
+  assert.equal(set.status, 200);
+
+  // A completely separate request — a different device — sees the same choice.
+  const lib = await call('GET', '/api/library?profile=p_olti');
+  assert.equal(lib.body.subtitleChoice[titleId], 'Shqip');
+
+  // And it is per profile, like everything else that is personal.
+  const other = await call('GET', '/api/library?profile=p_elbi');
+  assert.equal(other.body.subtitleChoice[titleId], undefined);
+
+  // "off" is a choice worth keeping, not an absence.
+  await call('POST', '/api/subtitle-choice', { profileId: 'p_olti', titleId, label: 'off' });
+  assert.equal((await call('GET', '/api/library?profile=p_olti')).body.subtitleChoice[titleId], 'off');
+
+  // Clearing it removes the entry rather than storing an empty string.
+  await call('POST', '/api/subtitle-choice', { profileId: 'p_olti', titleId, label: null });
+  assert.equal((await call('GET', '/api/library?profile=p_olti')).body.subtitleChoice[titleId], undefined);
+});
+
+test('a subtitle choice is refused for an unknown profile or title', async () => {
+  assert.equal((await call('POST', '/api/subtitle-choice', {
+    profileId: 'p_nobody', titleId, label: 'Shqip',
+  })).status, 400);
+  assert.equal((await call('POST', '/api/subtitle-choice', {
+    profileId: 'p_olti', titleId: '', label: 'Shqip',
+  })).status, 400);
+  assert.equal((await call('GET', '/api/subtitle-choice')).status, 405);
+});
+
 test('resume settings are stored and clamped', async () => {
   assert.equal((await call('PATCH', '/api/settings', { resumeRewind: 12 })).body.settings.resumeRewind, 12);
   assert.equal((await call('PATCH', '/api/settings', { resumeRewind: 999 })).body.settings.resumeRewind, 60);

@@ -40,6 +40,7 @@ export async function handleApi(req, res, url) {
     case 'subtitles': return handleSubtitles(req, res, route);
     case 'progress': return handleProgress(req, res, route, method);
     case 'mylist': return handleMyList(req, res, method);
+    case 'subtitle-choice': return handleSubtitleChoice(req, res, method);
     case 'profiles': return handleProfiles(req, res, route, method);
     case 'reset-profile': return handleResetProfile(req, res, route, method);
     case 'settings': return handleSettings(req, res, method);
@@ -97,6 +98,7 @@ function handleLibrary(req, res, url, method) {
     profiles: db.profiles,
     settings: db.settings,
     progress: db.progress[profileId] || {},
+    subtitleChoice: db.subtitleChoice[profileId] || {},
     myList: db.myList[profileId] || [],
     activeProfile: profileId,
     server: {
@@ -693,6 +695,29 @@ async function handleMyList(req, res, method) {
   db.myList[profileId] = [...list];
   await saveDb();
   return json(res, 200, { myList: db.myList[profileId] });
+}
+
+/**
+ * Which subtitle track a person chose for a title, or 'off'.
+ *
+ * Server-side rather than in the browser, so turning subtitles off on the
+ * laptop is still off when you pick the film up on your phone.
+ */
+async function handleSubtitleChoice(req, res, method) {
+  const db = loadDb();
+  if (method !== 'POST') return fail(res, 405, 'Method not allowed');
+  const body = await readJson(req);
+  const profileId = String(body.profileId || '');
+  const titleId = String(body.titleId || '');
+  if (!db.profiles.some((p) => p.id === profileId)) return fail(res, 400, 'Unknown profile');
+  if (!titleId) return fail(res, 400, 'A titleId is required');
+
+  const forProfile = db.subtitleChoice[profileId] || (db.subtitleChoice[profileId] = {});
+  if (body.label === null || body.label === undefined || body.label === '') delete forProfile[titleId];
+  else forProfile[titleId] = String(body.label).slice(0, 120);
+
+  await saveDb();
+  return json(res, 200, { subtitleChoice: forProfile });
 }
 
 async function handleProfiles(req, res, route, method) {

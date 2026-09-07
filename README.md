@@ -84,10 +84,17 @@ next one automatically and tells you why.
   you switch between them mid-playback without losing your place.
 - **Resume slightly early** — stop at 27:47 and it picks up at 27:42. Five seconds of
   run-up beats landing mid-sentence; adjustable (or set to 0) in Settings.
-- **Subtitles that behave** — pick a track while watching and Elbi remembers it for that
-  title next time. Set the text size and background (drop shadow, black box or nothing),
-  and if an `.srt` was cut for a different release, nudge its timing with `[` and `]`
-  until it lines up.
+- **Subtitles that come on by themselves.** Set your language once and every film that
+  has a track in it starts with subtitles on — you don't pick them per film. A track in
+  a language you *didn't* ask for is never switched on by itself; subtitles you can't
+  read are worse than none. Elbi treats `alb`, `sqi` and `sq` as the same language, so
+  it doesn't matter which spelling a file or a download site uses.
+- **Subtitles that behave** — pick a different track and Elbi remembers it for that
+  title, including having deliberately switched them off. That choice belongs to your
+  profile rather than to the browser, so turning them off on the laptop is still off
+  when you pick the film up on your phone. Set the text size and background (drop
+  shadow, black box or nothing), and if an `.srt` was cut for a different release,
+  nudge its timing with `[` and `]` until it lines up.
 - **Stats for nerds** (press `S`) — live resolution, **measured** frame rate, dropped
   frames, buffer ahead, average bitrate, and whether you're watching an offline copy.
   The frame rate comes from `requestVideoFrameCallback`, so it's what the browser is
@@ -218,6 +225,17 @@ finished; and narrow to a genre — each genre offered with the number of titles
 so no chip is a dead end. The heading counts what's shown against what exists ("3 of 41
 titles"), so a filter is never silently in effect, and your choice is remembered for next
 time.
+
+**Films** and **TV shows** are shelves of their own in the nav — the same grid pinned to
+one kind, so you don't filter every time. The genre chips there count only what's on that
+shelf.
+
+**Has anyone seen this already?** Cards carry a small row of faces for everyone else in
+the house who has started or finished a title, and the detail sheet says it in words —
+*"Seen by: Olti, Elbi (part-way)"*. Someone half-way through is drawn as an outline, so
+finished and part-way read differently at a glance. Only the *fact* is shared: how far
+anyone got stays inside their own profile. A series counts as seen only when every
+episode is. Turn it off with the `showWhoWatched` setting.
 
 ### Profiles
 
@@ -477,11 +495,12 @@ nothing that rots when you come back to it in two years.
 npm test
 ```
 
-104 tests covering filename parsing, range-request edge cases, path-traversal refusal,
+125 tests covering filename parsing, range-request edge cases, path-traversal refusal,
 SRT→VTT conversion (including the single-digit hour that makes a browser discard an entire
 file), subtitle charset decoding, advert-cue stripping, subtitle-download URL containment,
 skip-intro marker validation, the resume-rewind arithmetic, search ranking and accent
-folding, library filtering and sorting, session revocation when the password changes,
+folding, subtitle-language matching across ISO 639-1/2B/2T, library filtering and
+sorting, session revocation when the password changes,
 login throttling, the fixed profile roster (including that it refuses to be added to or
 deleted from, and that one profile's history never leaks into another's), and a full
 server round trip: chunked upload → byte-exact streaming → folder scan → progress →

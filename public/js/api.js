@@ -83,6 +83,8 @@ export const api = {
 
   addToList: (profileId, titleId) => request('POST', '/api/mylist', { body: { profileId, titleId } }),
   removeFromList: (profileId, titleId) => request('DELETE', '/api/mylist', { body: { profileId, titleId } }),
+  setSubtitleChoice: (profileId, titleId, label) =>
+    request('POST', '/api/subtitle-choice', { body: { profileId, titleId, label } }),
 
   // The profile roster is fixed in code; only the watch history is mutable.
   resetProfile: (id) => request('POST', `/api/reset-profile/${id}`, { body: {} }),

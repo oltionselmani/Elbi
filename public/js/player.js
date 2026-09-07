@@ -377,11 +377,28 @@ function clearTracks() {
 
 const LS_SUB_CHOICE = 'elbi.subtitle.';
 
+/**
+ * Which track this person last chose for this title.
+ *
+ * The server is the record, so switching subtitles off on the laptop is still
+ * off when the film is picked up on a phone. localStorage is kept as a mirror
+ * rather than the source: it is what answers while offline, and what covers
+ * the moment between choosing a track and the write landing.
+ */
 function subtitleMemory(titleId) {
+  const remote = state.subtitleChoice?.[titleId];
+  if (remote) return remote;
   try { return localStorage.getItem(LS_SUB_CHOICE + titleId); } catch { return null; }
 }
+
 function rememberSubtitle(titleId, label) {
+  if (state.subtitleChoice) state.subtitleChoice[titleId] = label;
   try { localStorage.setItem(LS_SUB_CHOICE + titleId, label); } catch { /* private mode */ }
+  // Best effort: a failed write only costs this device its cross-device sync,
+  // and the local mirror above still answers.
+  if (state.activeProfile) {
+    api.setSubtitleChoice(state.activeProfile, titleId, label).catch(() => {});
+  }
 }
 
 function attachTracks() {

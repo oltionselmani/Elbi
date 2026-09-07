@@ -25,6 +25,9 @@ function emptyDb() {
     profiles: PROFILES.map((p) => ({ ...p })),
     progress: {},
     myList: {},
+    // profileId -> titleId -> subtitle label, or 'off'. Kept on the server
+    // rather than in the browser so the choice follows you between devices.
+    subtitleChoice: {},
     settings: {
       seekStep: 5,
       doubleClickSeek: 5,
@@ -74,6 +77,7 @@ function normalize(db) {
   out.profiles = Array.isArray(out.profiles) ? out.profiles : [];
   out.progress = out.progress && typeof out.progress === 'object' ? out.progress : {};
   out.myList = out.myList && typeof out.myList === 'object' ? out.myList : {};
+  out.subtitleChoice = out.subtitleChoice && typeof out.subtitleChoice === 'object' ? out.subtitleChoice : {};
   out.settings = { ...base.settings, ...(out.settings || {}) };
 
   for (const title of out.titles) {
