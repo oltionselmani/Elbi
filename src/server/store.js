@@ -36,8 +36,12 @@ function emptyDb() {
       subtitleBackground: 'shadow',
       // Offer to jump past a marked intro while it is on screen.
       skipIntro: true,
-      // Language fetched by the one-click subtitle button (ISO 639-2/B).
+      // Language fetched by the one-click subtitle button (ISO 639-2/B), and
+      // the language turned on by itself when a title has a track in it.
       subtitleLanguage: 'alb',
+      // Switch subtitles on automatically when a title carries the language
+      // above. A choice made for a particular title still overrides this.
+      autoSubtitles: true,
       // Look up posters and synopses for newly imported titles.
       autoMatchMetadata: true,
       // Minutes preselected in the player's sleep timer menu.

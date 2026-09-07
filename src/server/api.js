@@ -732,6 +732,7 @@ async function handleSettings(req, res, method) {
   if ('skipIntro' in body) db.settings.skipIntro = Boolean(body.skipIntro);
   if ('autoMatchMetadata' in body) db.settings.autoMatchMetadata = Boolean(body.autoMatchMetadata);
   if ('showWhoWatched' in body) db.settings.showWhoWatched = Boolean(body.showWhoWatched);
+  if ('autoSubtitles' in body) db.settings.autoSubtitles = Boolean(body.autoSubtitles);
   if ('sleepTimerMinutes' in body) db.settings.sleepTimerMinutes = clamp(Number(body.sleepTimerMinutes), 5, 240, 45);
   if ('subtitleLanguage' in body) {
     try {

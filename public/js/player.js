@@ -4,6 +4,7 @@ import {
   state, playablesOf, progressFor, resumePointFor, savedVolume, saveVolume, savedMuted, emit,
 } from './state.js';
 import { isSourceOffline } from './offline.js';
+import { trackToShow } from './langs.js';
 
 const dom = {};
 let bound = false;
@@ -35,6 +36,7 @@ const session = {
   introDismissed: false,
   marking: null,       // { start } while an intro is being marked live
   sleep: null,         // { mode, endsAt?, tick } sleep timer
+  chosenTrack: null,   // the subtitle track we picked, held against the browser's own
 };
 
 /**
@@ -387,32 +389,76 @@ function attachTracks() {
   session.subOffset = 0;
   session.cueBase = new WeakMap();
 
+  session.chosenTrack = null;
+
   subs.forEach((sub, i) => {
     const track = document.createElement('track');
     track.kind = 'subtitles';
     track.label = sub.label || `Track ${i + 1}`;
     track.srclang = sub.lang || 'und';
     track.src = subtitleUrl(session.title.id, sub.id);
+    // The file loads well after our choice is made, and Chrome may switch a
+    // track on for itself at that moment — so re-assert once it lands.
+    track.addEventListener('load', enforceTrackChoice);
     dom.video.append(track);
   });
 
   applySubtitleStyle();
 
-  // Re-select whatever this title was last watched with; otherwise stay off.
+  // What this title was last watched with wins; failing that, a track in the
+  // language you asked for comes on by itself. Before this, a film you had
+  // never opened started with subtitles off no matter what — so "my subtitles
+  // are Albanian" only took effect on films you had already picked them for.
   const remembered = subtitleMemory(session.title.id);
   requestAnimationFrame(() => {
     const tracks = [...dom.video.textTracks];
     for (const track of tracks) track.mode = 'disabled';
-    if (remembered && remembered !== 'off') {
-      const match = tracks.find((t) => t.label === remembered);
-      if (match) showTrack(match, { quiet: true });
-    }
+
+    // textTracks exposes `language`; the <track> elements carry `srclang`.
+    const choices = tracks.map((t, i) => ({
+      track: t,
+      label: t.label,
+      srclang: t.language || subs[i]?.lang || '',
+    }));
+    const picked = trackToShow(choices, {
+      remembered,
+      preferredLang: state.settings?.subtitleLanguage || '',
+      auto: state.settings?.autoSubtitles !== false,
+    });
+    if (picked) showTrack(picked.track, { quiet: true });
+
     buildSubsMenu();
   });
 }
 
+/**
+ * Hold the picked track against the browser's own opinion.
+ *
+ * Chrome runs its own automatic text-track selection when a track file
+ * finishes loading, choosing by the browser's UI language. That lands *after*
+ * we have made our choice, so a film with an English and an Albanian track
+ * ended up with both switched on and two languages painted on top of each
+ * other. Whenever the track list changes, anything showing that we did not
+ * choose goes back off.
+ */
+let enforcing = false;
+function enforceTrackChoice() {
+  if (enforcing || !session.active) return;
+  const wanted = session.chosenTrack || null;
+  const tracks = [...dom.video.textTracks];
+  const stray = tracks.filter((t) => t.mode === 'showing' && t !== wanted);
+  const lost = wanted && wanted.mode !== 'showing';
+  if (!stray.length && !lost) return;
+
+  enforcing = true;
+  for (const t of stray) t.mode = 'disabled';
+  if (lost) wanted.mode = 'showing';
+  enforcing = false;
+}
+
 function showTrack(track, { quiet = false } = {}) {
   for (const t of dom.video.textTracks) t.mode = 'disabled';
+  session.chosenTrack = track || null;
   if (!track) {
     rememberSubtitle(session.title.id, 'off');
     if (!quiet) flash('Subtitles off');
@@ -1557,6 +1603,8 @@ function bindEvents() {
   dom.back.addEventListener('click', close);
   dom.statsClose.addEventListener('click', () => { dom.stats.hidden = true; });
   dom.keysClose.addEventListener('click', () => toggleShortcuts(false));
+  // Chrome enables a track by itself when one loads; put ours back.
+  dom.video.textTracks.addEventListener?.('change', enforceTrackChoice);
   dom.errorClose.addEventListener('click', close);
   dom.errorSwitch.addEventListener('click', () => {
     const next = (session.sourceIndex + 1) % session.sources.length;

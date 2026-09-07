@@ -646,6 +646,7 @@ export function openSettings() {
   ].map(([value, label]) => el('option', {
     value, text: label, selected: (state.settings.subtitleLanguage || 'alb') === value,
   })));
+  const autoSubs = el('input', { type: 'checkbox', checked: state.settings.autoSubtitles !== false });
   const skipIntro = el('input', { type: 'checkbox', checked: state.settings.skipIntro !== false });
   const autoMatch = el('input', { type: 'checkbox', checked: state.settings.autoMatchMetadata !== false });
 
@@ -673,10 +674,15 @@ export function openSettings() {
       el('label.field', {}, [el('span', { text: 'Text size' }), subSize]),
       el('label.field', {}, [el('span', { text: 'Background' }), subBg]),
     ]),
-    el('label.field', {}, [el('span', { text: 'Language to search for' }), subLang]),
+    el('label.field', {}, [el('span', { text: 'Your subtitle language' }), subLang]),
     el('p.muted', {
       style: { marginTop: '-.5rem', fontSize: '.82rem' },
-      text: 'Used by “Find subtitles online”, which searches opensubtitles.org. Downloads are converted to WebVTT and re-encoded to UTF-8, so Albanian ë and ç survive.',
+      text: 'Searched by “Find subtitles online” on opensubtitles.org, and turned on by itself whenever a title has a track in it. Downloads are converted to WebVTT and re-encoded to UTF-8, so Albanian ë and ç survive.',
+    }),
+    el('label.checkline', {}, [autoSubs, el('span', { text: 'Turn subtitles on automatically in that language' })]),
+    el('p.muted', {
+      style: { marginTop: '-.35rem', fontSize: '.82rem' },
+      text: 'Every film with a matching track starts with subtitles on — you no longer have to pick them per film. Switching them off for one title is remembered for that title. Tracks in other languages are never turned on by themselves.',
     }),
 
     el('h3', { text: 'Skip intro & posters', style: { marginTop: '1.2rem', fontSize: '1rem' } }),
@@ -747,6 +753,7 @@ export function openSettings() {
               subtitleSize: subSize.value,
               subtitleBackground: subBg.value,
               subtitleLanguage: subLang.value,
+              autoSubtitles: autoSubs.checked,
               skipIntro: skipIntro.checked,
               autoMatchMetadata: autoMatch.checked,
             });
