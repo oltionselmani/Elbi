@@ -361,10 +361,38 @@ paths that try to climb out are rejected, including through a symlink. Elbi will
 *delete* files it uploaded itself — a scanned library is never touched, even when you
 remove a title and tick "delete files".
 
-**About the password.** Sessions are signed with the server secret *and* the current
-password, so changing `ELBI_PASSWORD` immediately invalidates every session issued under
-the old one — the whole point of changing it. The password itself never leaves the
-server; it only contributes to the signing key.
+### Signing in
+
+```bash
+npm run set-login
+```
+
+It asks for an email and a password, and stores the password as a **scrypt** hash in
+`data/credentials.json` — gitignored, written owner-only. The password is never in the
+repo, never in an environment variable, never passed as a command argument (arguments are
+visible to anyone who can run `ps`), and not recoverable from what's stored.
+
+scrypt at N=2^15 costs roughly 100ms and 32MB per guess. A bare SHA-256 of a short
+password falls to a wordlist in seconds; this makes the same wordlist take hours per
+thousand guesses, and it stacks with the lockout below. A test pins that cost so it can't
+quietly become cheap again.
+
+**Remember this device** is ticked by default. The cookie then lasts 400 days — the most
+a browser will honour — so a phone is asked once and not again. Untick it on a computer
+that isn't yours and the cookie dies with the browser. Cookies are always `HttpOnly` and
+`SameSite=Lax`, and `Secure` over https.
+
+Wrong credentials always say *"Wrong email or password"*, whichever half was wrong, and a
+wrong address costs the same time as a wrong password — otherwise the response time alone
+would reveal which addresses exist.
+
+`ELBI_PASSWORD` still works as a simpler shared-password mode for a home LAN; the
+email/password credential takes precedence when one exists.
+
+**Changing either the password or the email logs every device out**, everywhere,
+immediately. The credential is part of what signs a session, so old cookies stop
+verifying — which is the entire point of changing it. Neither the password nor its hash
+ever leaves the server; they only contribute to the signing key.
 
 Wrong passwords are throttled per client: five free attempts, then a lockout that doubles
 with each further miss, capped at fifteen minutes and cleared the moment you get it
@@ -495,13 +523,13 @@ nothing that rots when you come back to it in two years.
 npm test
 ```
 
-125 tests covering filename parsing, range-request edge cases, path-traversal refusal,
+143 tests covering filename parsing, range-request edge cases, path-traversal refusal,
 SRT→VTT conversion (including the single-digit hour that makes a browser discard an entire
 file), subtitle charset decoding, advert-cue stripping, subtitle-download URL containment,
 skip-intro marker validation, the resume-rewind arithmetic, search ranking and accent
 folding, subtitle-language matching across ISO 639-1/2B/2T, library filtering and
-sorting, session revocation when the password changes,
-login throttling, the fixed profile roster (including that it refuses to be added to or
+sorting, scrypt password hashing and its cost, session revocation when the password or
+email changes, remember-this-device cookie lifetimes, login throttling, the fixed profile roster (including that it refuses to be added to or
 deleted from, and that one profile's history never leaks into another's), and a full
 server round trip: chunked upload → byte-exact streaming → folder scan → progress →
 deletion → restart.
