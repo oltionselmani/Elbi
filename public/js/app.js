@@ -101,11 +101,25 @@ function updateChrome() {
 // ---------------------------------------------------------------------------
 // gates
 
-function showLogin() {
+function showLogin(status = {}) {
   $('#loginGate').hidden = false;
   $('#profileGate').hidden = true;
   $('#app').hidden = true;
-  $('#loginPassword')?.focus();
+
+  // A shared-password setup has no email to ask for; an email/password one does.
+  const wantsEmail = Boolean(status.emailLogin);
+  const field = $('#loginEmailField');
+  if (field) {
+    field.hidden = !wantsEmail;
+    $('#loginEmail').required = wantsEmail;
+  }
+  const blurb = $('#loginBlurb');
+  if (blurb) {
+    blurb.textContent = wantsEmail
+      ? 'Sign in to your library.'
+      : 'This library is password protected.';
+  }
+  (wantsEmail ? $('#loginEmail') : $('#loginPassword'))?.focus();
 }
 
 function showProfiles() {
@@ -147,7 +161,7 @@ async function boot() {
   }
 
   if (status.authRequired && !status.authed) {
-    showLogin();
+    showLogin(status);
     return;
   }
 
@@ -178,7 +192,11 @@ function bindGlobalUi() {
     const error = $('#loginError');
     error.hidden = true;
     try {
-      await api.login($('#loginPassword').value);
+      await api.login({
+        email: $('#loginEmail')?.value || '',
+        password: $('#loginPassword').value,
+        remember: $('#loginRemember')?.checked !== false,
+      });
       $('#loginPassword').value = '';
       await boot();
     } catch (err) {

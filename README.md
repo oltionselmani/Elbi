@@ -345,7 +345,7 @@ Everything is an environment variable; none of them are required.
 | `ELBI_ALLOW_REMOTE` | `1` | Set `0` to disable the Internet Archive browser, metadata lookups, subtitle search and all remote URLs |
 | `ELBI_TMDB_KEY` | *(unset)* | TMDB API key or v4 read token. Without it, posters come from Wikipedia instead |
 | `ELBI_SUBTITLE_LANG` | `alb` | Default subtitle language to search for (ISO 639-2/B; `alb` is Albanian) |
-| `ELBI_SESSION_DAYS` | `30` | How long a login lasts |
+| `ELBI_SESSION_DAYS` | `400` | How long a remembered device stays signed in. 400 days is the most a browser will honour |
 | `ELBI_TRUST_PROXY` | `0` | Set `1` **only** behind a reverse proxy you control, so `X-Forwarded-For` names the client for login throttling |
 | `ELBI_LOG` | `1` | Set `0` to silence request logging |
 

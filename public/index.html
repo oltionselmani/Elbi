@@ -18,13 +18,26 @@
   <form class="gate__card" id="loginForm">
     <div class="wordmark wordmark--lg">ELBI</div>
     <h1>Sign in</h1>
-    <p class="muted">This library is password protected.</p>
+    <p class="muted" id="loginBlurb">This library is private.</p>
+    <label class="field" id="loginEmailField" hidden>
+      <span>Email</span>
+      <input type="email" id="loginEmail" autocomplete="username" inputmode="email"
+             autocapitalize="none" spellcheck="false">
+    </label>
     <label class="field">
       <span>Password</span>
       <input type="password" id="loginPassword" autocomplete="current-password" required>
     </label>
+    <label class="checkline checkline--gate">
+      <input type="checkbox" id="loginRemember" checked>
+      <span>Remember this device</span>
+    </label>
     <p class="form-error" id="loginError" hidden></p>
     <button class="btn btn--primary btn--block" type="submit">Sign in</button>
+    <p class="muted gate__foot">
+      Ticked, you'll only be asked once on this device. Untick it on a computer
+      that isn't yours.
+    </p>
   </form>
 </div>
 

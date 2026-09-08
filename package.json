@@ -2,7 +2,7 @@
   "name": "elbi",
   "version": "1.0.0",
   "private": true,
-  "description": "Elbi — a self-hosted streaming site for your own movie library. No dependencies, no build step.",
+  "description": "Elbi \u2014 a self-hosted streaming site for your own movie library. No dependencies, no build step.",
   "type": "module",
   "engines": {
     "node": ">=18.0.0"
@@ -12,7 +12,8 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node --test \"test/**/*.test.js\"",
-    "scan": "node scripts/scan.js"
+    "scan": "node scripts/scan.js",
+    "set-login": "node scripts/set-login.js"
   },
   "keywords": [
     "streaming",

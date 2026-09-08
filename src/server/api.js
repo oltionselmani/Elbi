@@ -3,7 +3,7 @@ import path from 'node:path';
 import { config, allowedRoots } from './config.js';
 import { json, fail, readJson, readBody, serveFile, send } from './http.js';
 import {
-  authRequired, checkPassword, sessionCookie, clearCookie, isAuthed,
+  authRequired, checkSignIn, sessionCookie, clearCookie, isAuthed, usesEmailLogin,
   clientKey, loginLockout, noteLoginFailure, noteLoginSuccess,
 } from './auth.js';
 import { loadDb, saveDb } from './store.js';
@@ -59,7 +59,12 @@ export async function handleApi(req, res, url) {
 
 async function handleAuth(req, res, route, method) {
   if (route[1] === 'status' && method === 'GET') {
-    return json(res, 200, { authRequired: authRequired(), authed: isAuthed(req) });
+    return json(res, 200, {
+      authRequired: authRequired(),
+      authed: isAuthed(req),
+      // The sign-in form needs to know whether to ask for an email as well.
+      emailLogin: usesEmailLogin(),
+    });
   }
   if (route[1] === 'login' && method === 'POST') {
     const who = clientKey(req);
@@ -71,13 +76,18 @@ async function handleAuth(req, res, route, method) {
       }, { 'Retry-After': String(seconds) });
     }
     const body = await readJson(req);
-    if (!checkPassword(body.password)) {
+    if (!checkSignIn({ email: body.email, password: body.password })) {
       const locked = noteLoginFailure(who);
-      return fail(res, 401, 'Wrong password.', locked > 0 ? { retryAfter: Math.ceil(locked / 1000) } : {});
+      // One message for both, so it never reveals which half was wrong.
+      const message = usesEmailLogin() ? 'Wrong email or password.' : 'Wrong password.';
+      return fail(res, 401, message, locked > 0 ? { retryAfter: Math.ceil(locked / 1000) } : {});
     }
     noteLoginSuccess(who);
     const secure = (req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https';
-    return json(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(secure) });
+    const remember = body.remember !== false;
+    return json(res, 200, { ok: true, remember }, {
+      'Set-Cookie': sessionCookie(secure, { remember }),
+    });
   }
   if (route[1] === 'logout' && method === 'POST') {
     return json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie() });

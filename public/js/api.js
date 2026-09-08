@@ -44,7 +44,8 @@ export const api = {
   del: (path, opts) => request('DELETE', path, opts),
 
   authStatus: () => request('GET', '/api/auth/status'),
-  login: (password) => request('POST', '/api/auth/login', { body: { password } }),
+  login: ({ email = '', password, remember = true }) =>
+    request('POST', '/api/auth/login', { body: { email, password, remember } }),
   logout: () => request('POST', '/api/auth/logout'),
 
   library: (profileId) => request('GET', '/api/library', { query: { profile: profileId } }),

@@ -55,7 +55,10 @@ export const config = {
     .map((s) => path.resolve(s)),
   // Allow proxying/streaming remote URLs (Internet Archive browser, add-by-URL).
   allowRemote: process.env.ELBI_ALLOW_REMOTE !== '0',
-  sessionTtlMs: envInt('ELBI_SESSION_DAYS', 30) * 24 * 60 * 60 * 1000,
+  // 400 days is the ceiling browsers honour for a cookie, so a device you
+  // told Elbi to remember is asked once and then not again. Signing out, or
+  // changing the password, still ends it immediately.
+  sessionTtlMs: envInt('ELBI_SESSION_DAYS', 400) * 24 * 60 * 60 * 1000,
   // Believe X-Forwarded-For when naming the client. Only turn this on behind a
   // reverse proxy you control — otherwise anyone can forge the header and dodge
   // the login throttle by inventing a new address every request.

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { config, loadSecret } from './config.js';
+import { credentialsSet, credentialFingerprint, verifyCredentials } from './credentials.js';
 
 const COOKIE = 'elbi_session';
 let secret = null;
@@ -10,23 +11,30 @@ function getSecret() {
 }
 
 export function authRequired() {
-  return Boolean(config.password);
+  return credentialsSet() || Boolean(config.password);
+}
+
+/** True once an email/password has been set up, as opposed to a bare password. */
+export function usesEmailLogin() {
+  return credentialsSet();
 }
 
 /**
- * Sessions are signed with the server secret *and* the current password, so
- * changing ELBI_PASSWORD silently invalidates every cookie that was minted
- * under the old one. Signing with the secret alone meant a password change
- * locked nobody out — the whole point of changing it.
+ * Sessions are signed with the server secret *and* the current credential, so
+ * changing the password (or the email) silently invalidates every cookie that
+ * was minted under the old one. Signing with the secret alone meant a password
+ * change locked nobody out — the whole point of changing it.
  *
- * The password never leaves the server: it only ever contributes to the key,
- * so the cookie itself stays a plain `expiry.mac` pair.
+ * Neither the password nor its hash leaves the server: they only ever
+ * contribute to the key, so the cookie itself stays a plain `expiry.mac` pair.
  */
 function signingKey() {
   return crypto.createHash('sha256')
     .update(getSecret())
     .update('\0')
     .update(config.password)
+    .update('\0')
+    .update(credentialFingerprint())
     .digest();
 }
 
@@ -34,8 +42,8 @@ function sign(value) {
   return crypto.createHmac('sha256', signingKey()).update(value).digest('base64url');
 }
 
-function mintToken() {
-  const expires = Date.now() + config.sessionTtlMs;
+function mintToken(ttlMs = config.sessionTtlMs) {
+  const expires = Date.now() + ttlMs;
   const payload = `${expires}`;
   return `${payload}.${sign(payload)}`;
 }
@@ -77,14 +85,27 @@ export function isAuthed(req) {
   return verifyToken(cookies[COOKIE]);
 }
 
-export function checkPassword(candidate) {
+/**
+ * Check a sign-in.
+ *
+ * An email/password credential takes precedence when one has been set up;
+ * ELBI_PASSWORD remains as the simpler shared-password mode for a LAN.
+ */
+export function checkSignIn({ email = '', password = '' } = {}) {
   if (!authRequired()) return true;
-  const a = Buffer.from(String(candidate ?? ''));
+  if (credentialsSet()) return verifyCredentials(email, password);
+
+  const a = Buffer.from(String(password ?? ''));
   const b = Buffer.from(config.password);
   // Hash both sides so the comparison is constant-time regardless of length.
   const ha = crypto.createHash('sha256').update(a).digest();
   const hb = crypto.createHash('sha256').update(b).digest();
   return crypto.timingSafeEqual(ha, hb);
+}
+
+/** Older name, kept for the shared-password path and its tests. */
+export function checkPassword(candidate) {
+  return checkSignIn({ password: candidate });
 }
 
 // --------------------------------------------------------------------------
@@ -155,14 +176,27 @@ export function resetLoginThrottle() {
   failures.clear();
 }
 
-export function sessionCookie(secureHint) {
+/**
+ * Browsers clamp a cookie's lifetime to 400 days, so asking for longer only
+ * looks longer. This is the ceiling, not a suggestion.
+ */
+const MAX_COOKIE_AGE_S = 400 * 24 * 60 * 60;
+
+/**
+ * `remember` is the "remember this device" tick on the sign-in form: the
+ * cookie is given the full session lifetime and survives closing the browser,
+ * so a phone is asked once and then not again. Without it the cookie is a
+ * session cookie, which is what you want on someone else's computer.
+ */
+export function sessionCookie(secureHint, { remember = true } = {}) {
+  const ttlS = Math.min(Math.floor(config.sessionTtlMs / 1000), MAX_COOKIE_AGE_S);
   const attrs = [
-    `${COOKIE}=${mintToken()}`,
+    `${COOKIE}=${mintToken(ttlS * 1000)}`,
     'Path=/',
     'HttpOnly',
     'SameSite=Lax',
-    `Max-Age=${Math.floor(config.sessionTtlMs / 1000)}`,
   ];
+  if (remember) attrs.push(`Max-Age=${ttlS}`);
   if (secureHint) attrs.push('Secure');
   return attrs.join('; ');
 }
