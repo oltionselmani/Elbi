@@ -121,8 +121,27 @@ function localAddresses() {
   return out;
 }
 
+/** Is Elbi listening on every interface, or only on this machine? */
+function boundEverywhere() {
+  return config.host === '0.0.0.0' || config.host === '::' || config.host === '';
+}
+
 server.listen(config.port, config.host, () => {
   const db = loadDb();
+
+  // Only advertise LAN addresses when something is actually listening on them.
+  // Printing them while bound to loopback sent people to a URL that could
+  // never answer — and made a deliberately private setup look exposed.
+  const reach = boundEverywhere()
+    ? [
+      `  Local     http://localhost:${config.port}`,
+      ...localAddresses().map((ip) => `  Network   http://${ip}:${config.port}`),
+    ]
+    : [
+      `  Local     http://${config.host === '127.0.0.1' ? 'localhost' : config.host}:${config.port}`,
+      '  Network   not listening beyond this machine (ELBI_HOST is not 0.0.0.0)',
+    ];
+
   const banner = [
     '',
     '  ███████ ██      ██████  ██',
@@ -131,8 +150,7 @@ server.listen(config.port, config.host, () => {
     '  ██      ██      ██   ██ ██',
     '  ███████ ███████ ██████  ██',
     '',
-    `  Local     http://localhost:${config.port}`,
-    ...localAddresses().map((ip) => `  Network   http://${ip}:${config.port}`),
+    ...reach,
     '',
     `  Media     ${config.mediaDir}`,
     `  Data      ${config.dataDir}`,
@@ -142,6 +160,19 @@ server.listen(config.port, config.host, () => {
     '',
   ];
   console.log(banner.join('\n'));
+
+  // Trusting X-Forwarded-For is only safe when the proxy is the sole way in.
+  // Bound to every interface, anyone who can reach the port directly can forge
+  // the header and hand themselves a fresh identity for every login attempt,
+  // walking straight past the lockout.
+  if (config.trustProxy && boundEverywhere()) {
+    console.warn(
+      '[elbi] WARNING: ELBI_TRUST_PROXY=1 while listening on every interface.\n'
+      + '        Anyone who can reach this port directly can forge X-Forwarded-For\n'
+      + '        and bypass the login lockout. Set ELBI_HOST=127.0.0.1 so the proxy\n'
+      + '        is the only way in, or unset ELBI_TRUST_PROXY.',
+    );
+  }
 });
 
 let closing = false;

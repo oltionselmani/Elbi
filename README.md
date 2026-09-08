@@ -405,78 +405,35 @@ identity per request and walk straight past the limit.
 
 ## Hosting it online
 
-Elbi speaks plain HTTP. Put a reverse proxy in front for TLS, which also unlocks
-service-worker offline downloads on your phone.
-
-**Caddy** — the shortest path to a working certificate:
-
-```caddyfile
-elbi.example.com {
-    reverse_proxy 127.0.0.1:8080
-}
-```
-
-**nginx** — note the two settings that matter for video:
-
-```nginx
-server {
-    server_name elbi.example.com;
-    listen 443 ssl http2;
-    # ssl_certificate ... (certbot writes these)
-
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host              $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        # Large uploads must not be capped or buffered to disk first.
-        client_max_body_size 0;
-        proxy_request_buffering off;
-        proxy_buffering off;
-        proxy_read_timeout 3600s;
-    }
-}
-```
-
-**systemd**, so it survives a reboot:
-
-```ini
-[Unit]
-Description=Elbi
-After=network.target
-
-[Service]
-WorkingDirectory=/opt/elbi
-ExecStart=/usr/bin/node server.js
-Environment=ELBI_PASSWORD=something-long
-Environment=ELBI_SCAN_DIRS=/mnt/movies
-Restart=always
-User=elbi
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**Docker**, if you'd rather:
-
-```dockerfile
-FROM node:22-alpine
-WORKDIR /app
-COPY . .
-ENV ELBI_MEDIA_DIR=/media ELBI_DATA_DIR=/data
-EXPOSE 8080
-CMD ["node", "server.js"]
-```
+**The short version:** run Elbi on the machine that holds the films and reach it over
+Tailscale. Your films never leave that machine, nothing is published to the public
+internet, and it costs nothing.
 
 ```bash
-docker build -t elbi .
-docker run -d -p 8080:8080 \
-  -v /mnt/movies:/media -v elbi-data:/data \
-  -e ELBI_PASSWORD=something-long elbi
+npm run set-login                                    # email + password, hashed
+ELBI_MEDIA_DIR=/path/to/films bash scripts/tailscale-setup.sh
 ```
 
-Before you open it to the world: **set `ELBI_PASSWORD`**, put TLS in front of it, and
-remember that you're responsible for what you host.
+That installs a service that starts at boot, publishes Elbi on your tailnet over real
+HTTPS, and prints the address. **[SETUP.md](SETUP.md)** has the full walkthrough,
+including the steps to forward to each family member for their phone.
+
+Two settings the script sets, which belong together:
+
+- `ELBI_HOST=127.0.0.1` — Elbi listens only on that machine, so Tailscale is the single
+  way in. It isn't on your home wifi either.
+- `ELBI_TRUST_PROXY=1` — behind a proxy every request appears to come from `127.0.0.1`,
+  so without this the login lockout is shared and one person mistyping their password
+  five times locks out the whole household. It is only safe *because* of the line above;
+  Elbi prints a warning at startup if it ever sees one without the other.
+
+HTTPS matters beyond encryption: iOS only allows *Add to Home Screen* and the
+offline-download service worker on a secure origin, so `tailscale serve` is what makes
+Elbi behave like an installed app rather than a browser tab.
+
+If you would rather have a public address, Cloudflare Tunnel plus a DuckDNS subdomain is
+the free combination that still works in a year — see SETUP.md for the trade-off.
+
 
 ---
 
