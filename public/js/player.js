@@ -3,8 +3,9 @@ import { api, streamUrl, subtitleUrl } from './api.js';
 import {
   state, playablesOf, progressFor, resumePointFor, savedVolume, saveVolume, savedMuted, emit,
 } from './state.js';
-import { isSourceOffline } from './offline.js';
+import { isSourceOffline, downloadSource } from './offline.js';
 import { trackToShow } from './langs.js';
+import { createStallWatcher, nextSmallerSource } from './stalls.js';
 
 const dom = {};
 let bound = false;
@@ -37,6 +38,7 @@ const session = {
   marking: null,       // { start } while an intro is being marked live
   sleep: null,         // { mode, endsAt?, tick } sleep timer
   chosenTrack: null,   // the subtitle track we picked, held against the browser's own
+  stalls: null,        // watches for a connection that cannot keep up
 };
 
 /**
@@ -147,6 +149,11 @@ function cache() {
     stats: $('#statsPanel'),
     statsBody: $('#statsBody'),
     statsClose: $('#statsClose'),
+    slowLink: $('#slowLink'),
+    slowLinkText: $('#slowLinkText'),
+    slowLinkSwitch: $('#slowLinkSwitch'),
+    slowLinkSave: $('#slowLinkSave'),
+    slowLinkDismiss: $('#slowLinkDismiss'),
     keys: $('#keysPanel'),
     keysBody: $('#keysBody'),
     keysClose: $('#keysClose'),
@@ -211,8 +218,10 @@ export async function play({ title, item, sourceId, startAt }) {
   session.intro = introOf(target);
   session.introDismissed = false;
   session.marking = null;
+  session.stalls = createStallWatcher();
   dom.upnext.hidden = true;
   dom.skipIntro.hidden = true;
+  hideSlowLink();
 
   const preferred = sourceId
     ? session.sources.findIndex((s) => s.id === sourceId)
@@ -257,6 +266,8 @@ export function close() {
   dom.root.hidden = true;
   dom.upnext.hidden = true;
   dom.skipIntro.hidden = true;
+  hideSlowLink();
+  session.stalls = null;
   if (dom.keys) dom.keys.hidden = true;
   dom.stats.hidden = true;
   document.body.classList.remove('is-playing');
@@ -1215,6 +1226,60 @@ function applyLocalProgress({ titleId, episodeId, position, duration, sourceId }
 }
 
 // ---------------------------------------------------------------------------
+// a connection that cannot keep up
+
+/**
+ * Streaming from a home machine to someone far away is limited by that
+ * machine's upload speed. When the link cannot sustain the bitrate, the
+ * picture stops every few seconds and a spinner explains nothing. Offer the
+ * two things that actually help: a smaller file, or downloading it first.
+ */
+function offerForSlowLink() {
+  const source = currentSource();
+  const smaller = nextSmallerSource(session.sources, source?.id);
+  const canSave = source?.kind === 'file' && !isSourceOffline(session.title.id, source.id);
+
+  // Nothing useful to offer: don't interrupt with a problem and no answer.
+  if (!smaller && !canSave) return;
+
+  dom.slowLinkText.textContent = smaller
+    ? `This ${source.label || 'file'} keeps stopping. A smaller copy will play smoothly.`
+    : 'This keeps stopping. Downloading it first will play without interruptions.';
+
+  dom.slowLinkSwitch.hidden = !smaller;
+  if (smaller) {
+    dom.slowLinkSwitch.textContent = `Switch to ${smaller.label || qualityLabel(smaller.height)}`;
+    dom.slowLinkSwitch.onclick = () => {
+      hideSlowLink();
+      const index = session.sources.findIndex((s) => s.id === smaller.id);
+      if (index >= 0) {
+        session.stalls?.reset();
+        loadSource(index, dom.video.currentTime);
+      }
+    };
+  }
+
+  dom.slowLinkSave.hidden = !canSave;
+  if (canSave) {
+    dom.slowLinkSave.onclick = () => {
+      hideSlowLink();
+      // Downloading competes with playback for the same link, so pause first.
+      dom.video.pause();
+      saveProgress(true);
+      downloadSource(session.title, source);
+      flash('Downloading — you can watch it when it finishes');
+    };
+  }
+
+  dom.slowLink.hidden = false;
+  showUi();
+}
+
+function hideSlowLink() {
+  if (dom.slowLink) dom.slowLink.hidden = true;
+}
+
+// ---------------------------------------------------------------------------
 // keyboard help
 
 /** Show, hide, or flip the shortcut list. */
@@ -1542,7 +1607,12 @@ function bindEvents() {
     dom.scrubBuffer.style.width = `${(buffered.end(buffered.length - 1) / duration) * 100}%`;
   });
 
-  video.addEventListener('waiting', () => { dom.spinner.hidden = false; });
+  video.addEventListener('waiting', () => {
+    dom.spinner.hidden = false;
+    // Only count a stall during real playback — seeking and startup buffer too.
+    if (!session.active || video.paused || session.scrubbing) return;
+    if (session.stalls?.record(Date.now())) offerForSlowLink();
+  });
   video.addEventListener('canplay', () => { dom.spinner.hidden = true; });
   video.addEventListener('playing', () => { dom.spinner.hidden = true; hideError(); });
   video.addEventListener('ratechange', buildMoreMenu);
@@ -1620,6 +1690,10 @@ function bindEvents() {
   dom.back.addEventListener('click', close);
   dom.statsClose.addEventListener('click', () => { dom.stats.hidden = true; });
   dom.keysClose.addEventListener('click', () => toggleShortcuts(false));
+  dom.slowLinkDismiss.addEventListener('click', () => {
+    hideSlowLink();
+    session.stalls?.dismiss(Date.now());
+  });
   // Chrome enables a track by itself when one loads; put ours back.
   dom.video.textTracks.addEventListener?.('change', enforceTrackChoice);
   dom.errorClose.addEventListener('click', close);

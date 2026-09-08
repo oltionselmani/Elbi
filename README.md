@@ -431,6 +431,17 @@ HTTPS matters beyond encryption: iOS only allows *Add to Home Screen* and the
 offline-download service worker on a secure origin, so `tailscale serve` is what makes
 Elbi behave like an installed app rather than a browser tab.
 
+**Someone outside the household**, in another country, works the same way — Tailscale is
+not a home-network thing, so distance is irrelevant and no hosting is involved.
+`bash scripts/tailscale-share.sh` prints the steps for sharing just that one machine
+(not your whole network) and measures the thing that actually limits them: your
+broadband's *upload* speed, since the film is sent from your machine.
+
+When a link can't sustain the bitrate, Elbi stops spinning silently — after three stalls
+in a minute it offers a smaller copy of the film, or offers to download it first. Taking
+the smaller copy keeps your place. Verified against a link throttled to 176 kbit/s with
+220ms of latency.
+
 If you would rather have a public address, Cloudflare Tunnel plus a DuckDNS subdomain is
 the free combination that still works in a year — see SETUP.md for the trade-off.
 
@@ -480,7 +491,7 @@ nothing that rots when you come back to it in two years.
 npm test
 ```
 
-143 tests covering filename parsing, range-request edge cases, path-traversal refusal,
+156 tests covering filename parsing, range-request edge cases, path-traversal refusal,
 SRT→VTT conversion (including the single-digit hour that makes a browser discard an entire
 file), subtitle charset decoding, advert-cue stripping, subtitle-download URL containment,
 skip-intro marker validation, the resume-rewind arithmetic, search ranking and accent

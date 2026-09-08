@@ -1216,3 +1216,16 @@ body.is-faux-fullscreen { overflow: hidden; }
   .row { scroll-behavior: auto; }
   .hero__art { animation: none; }
 }
+
+/* The "your connection can't keep up" offer. Same card as Up next, but it sits
+   lower-left so the two can never cover each other. */
+.slowlink { right: auto; left: clamp(.8rem, 3vw, 2.2rem); bottom: 128px; }
+.slowlink .upnext__card { max-width: 340px; }
+.slowlink strong {
+  font-family: var(--sans); font-size: .92rem; font-weight: 500;
+  letter-spacing: 0; line-height: 1.4;
+}
+@media (max-width: 700px) {
+  .slowlink { left: .8rem; right: .8rem; bottom: 112px; }
+  .slowlink .upnext__card { max-width: none; min-width: 0; }
+}

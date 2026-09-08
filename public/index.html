@@ -254,6 +254,19 @@
       </div>
     </div>
   </div>
+
+  <!-- Shown when the connection keeps failing to keep up. -->
+  <div class="upnext slowlink" id="slowLink" hidden>
+    <div class="upnext__card">
+      <span class="muted">Struggling to keep up</span>
+      <strong id="slowLinkText">The connection can't keep up with this file.</strong>
+      <div class="row-gap">
+        <button class="btn btn--primary" id="slowLinkSwitch" type="button" hidden></button>
+        <button class="btn btn--light" id="slowLinkSave" type="button" hidden>Download it first</button>
+        <button class="btn btn--ghost" id="slowLinkDismiss" type="button">Keep trying</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="toasts" id="toasts"></div>

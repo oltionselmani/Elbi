@@ -69,6 +69,62 @@ That's it. From then on: tap the icon, pick who's watching, press play.
 
 ---
 
+## Someone outside the household — a friend far away
+
+**Distance doesn't matter and you don't need hosting.** Tailscale is not a home-network
+thing: it builds an encrypted link between two machines wherever they are. A friend
+2,400 km away connects exactly as if they were in the next room. Nothing about the setup
+changes.
+
+```bash
+bash scripts/tailscale-share.sh
+```
+
+That prints the steps and measures the one thing that *does* matter. In short:
+
+**Share the machine, don't invite them to your network.** In the Tailscale admin at
+<https://login.tailscale.com/admin/machines>, use the **...** menu on your computer →
+**Share**, and send them the link. A shared machine gives them access to that one
+computer and nothing else — not your phone, not your laptop. They sign in to Tailscale
+with *their own* account, not yours, and you can revoke it on the same page.
+
+Then they open your Elbi address, sign in once with the email and password you gave them,
+and add it to their home screen. Same as everyone else.
+
+### The real limit is your upload speed
+
+The film is sent *from your computer*, so your broadband's **upload** figure sets the
+ceiling — not the distance, and not their download speed. Per person watching at once:
+
+| Quality | Needs about |
+|---|---|
+| 480p | 1–2 Mbit/s |
+| 720p | 3–5 Mbit/s |
+| 1080p | 5–10 Mbit/s |
+
+Home connections often have far less upload than download, so check that number before
+assuming 1080p will hold up.
+
+If the link can't manage it, Elbi does two things rather than spinning:
+
+- **It notices repeated stalling** and offers a smaller copy of the film, or offers to
+  download it first. Taking the smaller copy keeps your place in the film.
+- **The download button** saves a film to their phone. It then plays perfectly, even in
+  aeroplane mode. A link too thin to stream in real time can still fetch a film in the
+  background while they do something else.
+
+For the smaller-copy offer to have something to switch to, keep a 480p or 720p version
+next to the big one. Elbi lists every file a title has, so both show up in the quality
+menu.
+
+### Your computer has to be awake
+
+Elbi runs on your machine, not in a cloud. If it's asleep or off, your friend sees
+nothing. Turning off sleep — or at least disabling it while plugged in — is worth doing
+if someone else depends on it.
+
+---
+
 ## Why it's set up this way
 
 **Nothing is on the public internet.** Elbi listens only on `127.0.0.1` — not even on
