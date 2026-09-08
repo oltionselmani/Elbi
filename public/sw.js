@@ -29,6 +29,7 @@ const SHELL_ASSETS = [
   '/js/util.js',
   '/js/search.js',
   '/js/filters.js',
+  '/js/capacity.js',
   '/js/langs.js',
   '/js/stalls.js',
   '/js/player.js',

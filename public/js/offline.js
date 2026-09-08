@@ -1,6 +1,6 @@
 import { streamUrl } from './api.js';
 import { formatBytes, toast } from './util.js';
-import { state, emit } from './state.js';
+import { state, emit, playablesOf } from './state.js';
 
 /**
  * Offline downloads.
@@ -27,6 +27,22 @@ function emitJobs() {
 }
 export function activeJobs() {
   return [...jobs.values()];
+}
+
+/**
+ * What to call a saved file in the Downloads list.
+ *
+ * Two episodes of the same show both read "Night Shift — 720p" without the
+ * episode number, which makes the list useless for deciding what to delete.
+ */
+function downloadName(title, source) {
+  const quality = source.label || 'source';
+  const item = playablesOf(title).find((p) => p.sources.some((src) => src.id === source.id));
+  if (item?.episodeId) {
+    const code = `S${String(item.season ?? 1).padStart(2, '0')}E${String(item.episode ?? 1).padStart(2, '0')}`;
+    return `${title.name} · ${code} — ${quality}`;
+  }
+  return `${title.name} — ${quality}`;
 }
 
 function keyOf(titleId, sourceId) {
@@ -106,7 +122,7 @@ export async function downloadSource(title, source) {
     key,
     titleId: title.id,
     sourceId: source.id,
-    name: `${title.name} — ${source.label || 'source'}`,
+    name: downloadName(title, source),
     received: 0,
     total: source.size || 0,
     state: 'running',
@@ -220,6 +236,24 @@ export async function storageEstimate() {
     return { usage, quota };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Whether saved films are safe from being cleared.
+ *
+ * This is the fact that decides whether a download is still there next week.
+ * Without persistence a browser is free to evict Cache Storage under space
+ * pressure — and Safari clears data for sites it has not seen in a while,
+ * which is exactly the situation of someone who saved a film and then did not
+ * open the app for a fortnight.
+ */
+export async function persistenceStatus() {
+  if (!navigator.storage?.persisted) return { supported: false, persisted: false };
+  try {
+    return { supported: true, persisted: await navigator.storage.persisted() };
+  } catch {
+    return { supported: false, persisted: false };
   }
 }
 

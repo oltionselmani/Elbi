@@ -117,11 +117,42 @@ For the smaller-copy offer to have something to switch to, keep a 480p or 720p v
 next to the big one. Elbi lists every file a title has, so both show up in the quality
 menu.
 
-### Your computer has to be awake
+### Your computer has to be awake — unless he downloads first
 
-Elbi runs on your machine, not in a cloud. If it's asleep or off, your friend sees
-nothing. Turning off sleep — or at least disabling it while plugged in — is worth doing
-if someone else depends on it.
+Elbi runs on your machine, not in a cloud, so while he is *streaming*, your computer has
+to be on. There is no way around that: the film is on your disk.
+
+**But he doesn't have to stream.** On any title, the **↓** button next to a video file
+saves it to his phone, and a series has **Save this season offline** to grab the lot in
+one press. Once saved, those films play with your computer switched off completely — in
+aeroplane mode, on a train, anywhere. The app opens, the library is there, playback and
+seeking both work.
+
+So the practical arrangement is: he downloads a few things while your PC is on, then
+watches them whenever. You only need the machine awake when he is stocking up.
+
+Two things worth knowing:
+
+- **Tap "Protect my downloads"** in the Downloads sheet the first time. Without it a
+  browser is free to delete saved films when storage runs low — and Safari clears data
+  for apps it hasn't seen in a while, which is exactly the situation of someone who saved
+  a film and didn't open the app for a fortnight. The sheet says plainly whether they are
+  protected.
+- **Adding Elbi to the home screen helps**, both for that permission and because iOS
+  treats installed web apps more generously than a Safari tab.
+
+The Downloads sheet also tells him how much room is left, in films rather than gigabytes.
+
+### If you want it available without leaving your PC on
+
+A whole desktop running 24/7 to serve films is a lot of electricity. The usual answer is
+a small always-on machine instead — a Raspberry Pi 5 with an external drive draws a few
+watts, runs Elbi unchanged (it's just Node), and can sit behind the same Tailscale setup.
+Copy the films onto its drive and your desktop stays off.
+
+That is the only real way to have it always available. Putting the films on a rented
+server would work too, but a library of that size costs real money every month, which is
+the thing you were trying to avoid.
 
 ---
 

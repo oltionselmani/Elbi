@@ -3,6 +3,7 @@ import { api, streamUrl } from './api.js';
 import {
   SORTS, STATUSES, TYPES, applyView, genreCounts, defaultView, normalizeView, isDefaultView,
 } from './filters.js';
+import { typicalFilmSize, roomForFilms, describeRoom } from './capacity.js';
 import {
   state, playablesOf, progressFor, resumePointFor, continueWatching, allGenres, searchTitles,
   titleById, hasPlayableSource, upsertTitle, removeTitleLocal, refresh,
@@ -775,6 +776,56 @@ function episodeSection(title) {
   const listHost = el('div');
   wrap.append(listHost);
 
+  /**
+   * Save a whole season in one go.
+   *
+   * The point of downloading is usually "I want this before I lose the
+   * connection", and doing that episode by episode is the thing that stops
+   * people bothering. Downloads run one at a time so they do not fight each
+   * other for the same link.
+   */
+  const saveSeason = el('button.btn.btn--ghost.btn--sm', {
+    type: 'button',
+    style: { marginBottom: '.6rem' },
+    onclick: async (event) => {
+      const btn = event.currentTarget;
+      const number = Number(select.value);
+      const season = title.seasons.find((sn) => sn.number === number) || title.seasons[0];
+      const pending = playablesOf(title)
+        .filter((p) => p.season === season.number)
+        .map((p) => ({ item: p, source: rankedFirst(p.sources) }))
+        .filter((x) => x.source && !isSourceOffline(title.id, x.source.id));
+
+      if (!pending.length) return toast('Every episode in this season is already saved.', 'info');
+
+      btn.disabled = true;
+      let saved = 0;
+      for (const { source } of pending) {
+        // eslint-disable-next-line no-await-in-loop
+        const ok = await downloadSource(title, source);
+        if (!ok) break;
+        saved += 1;
+      }
+      btn.disabled = false;
+      toast(
+        saved === pending.length
+          ? `Saved ${saved} episode${saved === 1 ? '' : 's'} for offline.`
+          : `Saved ${saved} of ${pending.length} — the rest were not downloaded.`,
+        saved ? 'ok' : 'err',
+      );
+      refreshDetail(title.id);
+      return undefined;
+    },
+  }, ['↓ Save this season offline']);
+  wrap.append(saveSeason);
+
+  /** The best source to save: highest quality Elbi would play by default. */
+  function rankedFirst(sources) {
+    return [...(sources || [])]
+      .filter((src) => src.kind === 'file' || src.streamType === 'progressive')
+      .sort((a, b) => (b.height || 0) - (a.height || 0))[0] || null;
+  }
+
   function renderSeason(number) {
     const season = title.seasons.find((s) => s.number === number) || title.seasons[0];
     clear(listHost);
@@ -1062,10 +1113,51 @@ export function openDownloads() {
       text: 'Saved videos play with the network off, seeking included. They live in this browser’s storage on this device.',
     }));
 
-    const estimate = await (await import('./offline.js')).storageEstimate();
+    const offline = await import('./offline.js');
+    const estimate = await offline.storageEstimate();
     if (estimate?.quota) {
+      const free = Math.max(0, estimate.quota - estimate.usage);
+      // Judge "one film" by the library's own files rather than by whatever
+      // happens to be saved — one short clip would otherwise imply room for
+      // tens of thousands more.
+      const librarySizes = state.titles
+        .flatMap((t) => playablesOf(t).flatMap((p) => p.sources.map((src) => src.size)));
+      const typical = typicalFilmSize(librarySizes);
       body.append(el('p.muted', {
-        text: `Browser storage used: ${formatBytes(estimate.usage)} of about ${formatBytes(estimate.quota)}.`,
+        text: `${formatBytes(estimate.usage)} used of about ${formatBytes(estimate.quota)}`
+          + ` — ${formatBytes(free)} free, ${describeRoom(roomForFilms(free, typical))}.`,
+      }));
+    }
+
+    // Whether these survive is the thing worth knowing before relying on them.
+    const persistence = await offline.persistenceStatus();
+    if (persistence.supported && !persistence.persisted) {
+      const note = el('div.note.note--bad', {}, [
+        el('p', {
+          text: 'These downloads are not protected. The browser may delete them if '
+            + 'storage runs low, or if you do not open Elbi for a while — which is '
+            + 'exactly when you would be relying on them.',
+          style: { margin: '0 0 .6rem' },
+        }),
+        el('button.btn.btn--primary.btn--sm', {
+          type: 'button',
+          onclick: async () => {
+            const granted = await offline.requestPersistence();
+            toast(
+              granted
+                ? 'Protected — your downloads will not be cleared.'
+                : 'The browser declined. Adding Elbi to your home screen usually persuades it.',
+              granted ? 'ok' : 'err',
+            );
+            render();
+          },
+        }, ['Protect my downloads']),
+      ]);
+      body.append(note);
+    } else if (persistence.persisted) {
+      body.append(el('div.note.note--ok', {
+        text: 'Protected — these stay on this device until you delete them, '
+          + 'and play with the server switched off.',
       }));
     }
 
