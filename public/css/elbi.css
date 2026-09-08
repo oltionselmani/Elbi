@@ -1229,3 +1229,39 @@ body.is-faux-fullscreen { overflow: hidden; }
   .slowlink { left: .8rem; right: .8rem; bottom: 112px; }
   .slowlink .upnext__card { max-width: none; min-width: 0; }
 }
+
+/* "Add to home screen". Sits at the bottom, out of the way, and explains
+   itself rather than being a bare button — on iOS the steps are the whole
+   point, since Safari offers nothing of its own. */
+.install {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+  padding: 0 .8rem calc(.8rem + env(safe-area-inset-bottom, 0px));
+  display: flex; justify-content: center;
+  animation: rise .3s var(--ease-out) both;
+}
+.install__card {
+  display: flex; align-items: flex-start; gap: .9rem;
+  width: min(620px, 100%);
+  background: rgba(12, 12, 18, .97); backdrop-filter: blur(16px);
+  border: 1px solid var(--edge); border-radius: 14px;
+  padding: .9rem 1rem; box-shadow: var(--shadow);
+}
+.install__icon img { border-radius: 10px; }
+.install__body { flex: 1; min-width: 0; }
+.install__body strong {
+  display: block; font-family: var(--sans); font-size: .95rem;
+  font-weight: 600; letter-spacing: 0; margin-bottom: .3rem;
+}
+.install__body ol {
+  margin: 0; padding-left: 1.1rem;
+  color: var(--haze); font-size: .82rem; line-height: 1.45;
+}
+.install__body ol:not(:has(li + li)) { list-style: none; padding-left: 0; }
+.install__actions { display: flex; flex-direction: column; gap: .4rem; flex: none; }
+
+@media (max-width: 620px) {
+  .install__card { flex-wrap: wrap; }
+  .install__icon { display: none; }
+  .install__actions { flex-direction: row; width: 100%; }
+  .install__actions .btn { flex: 1; }
+}

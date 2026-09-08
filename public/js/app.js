@@ -10,6 +10,7 @@ import {
 import { openAdd, closeAdd, bindAddTabs, openSettings } from './add.js';
 import { initOffline, registerServiceWorker, offlineCount, requestPersistence, onJobsChanged } from './offline.js';
 import { isOpen as playerIsOpen, close as closePlayer } from './player.js';
+import { installState, readEnv } from './install.js';
 
 // ---------------------------------------------------------------------------
 // routing
@@ -139,6 +140,9 @@ async function startApp() {
   $('#app').hidden = false;
   await refresh();
   render();
+  // Offered once the library is actually on screen — an install prompt before
+  // you have seen what you are installing is just noise.
+  showInstallBanner();
 }
 
 // ---------------------------------------------------------------------------
@@ -203,6 +207,11 @@ function bindGlobalUi() {
       error.textContent = err.message;
       error.hidden = false;
     }
+  });
+
+  $('#installClose').addEventListener('click', () => {
+    $('#installBanner').hidden = true;
+    try { localStorage.setItem(INSTALL_DISMISSED, '1'); } catch { /* private mode */ }
   });
 
   // profile switching (the roster itself is fixed; see store.js)
@@ -395,6 +404,69 @@ function openProfileManager() {
 
 // Offline downloads are worth protecting from eviction; ask once, quietly.
 requestPersistence().catch(() => {});
+
+// ---------------------------------------------------------------------------
+// "Add to home screen"
+//
+// Chrome fires beforeinstallprompt and we can show a real button. Safari never
+// offers anything at all, so on an iPhone the only route is Share → Add to
+// Home Screen — and nobody finds that unless they are told. Worth telling
+// them: an installed web app also gets a more generous storage allowance, so
+// downloaded films are far less likely to be evicted.
+
+const INSTALL_DISMISSED = 'elbi.install.dismissed';
+let deferredPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  deferredPrompt = event;
+  showInstallBanner();
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredPrompt = null;
+  $('#installBanner').hidden = true;
+});
+
+function installDismissed() {
+  try { return localStorage.getItem(INSTALL_DISMISSED) === '1'; } catch { return false; }
+}
+
+function showInstallBanner({ force = false } = {}) {
+  const banner = $('#installBanner');
+  if (!banner) return;
+  const state = installState(readEnv(Boolean(deferredPrompt)));
+
+  if (state.installed || state.method === 'none' || (!force && installDismissed())) {
+    banner.hidden = true;
+    return;
+  }
+
+  $('#installTitle').textContent = state.title;
+  const list = clear($('#installSteps'));
+  for (const step of state.steps) list.append(el('li', { text: step }));
+
+  const go = $('#installGo');
+  go.hidden = state.method !== 'prompt';
+  go.onclick = async () => {
+    if (!deferredPrompt) return;
+    banner.hidden = true;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice.catch(() => {});
+    deferredPrompt = null;
+  };
+
+  banner.hidden = false;
+}
+
+/** Offered from the profile menu too, for anyone who dismissed it once. */
+export function openInstallHelp() {
+  try { localStorage.removeItem(INSTALL_DISMISSED); } catch { /* private mode */ }
+  showInstallBanner({ force: true });
+  const state = installState(readEnv(Boolean(deferredPrompt)));
+  if (state.installed) toast('Elbi is already installed on this device.', 'ok');
+  else if (state.method === 'none') toast('This browser cannot install web apps. Try Chrome, Edge, or Safari on an iPhone.', 'info');
+}
 
 boot().catch((err) => {
   console.error('[elbi] boot failed', err);

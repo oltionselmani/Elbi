@@ -41,6 +41,23 @@
   </form>
 </div>
 
+<!-- ── Install prompt ──────────────────────────────────────────────────── -->
+<div class="install" id="installBanner" hidden>
+  <div class="install__card">
+    <div class="install__icon" aria-hidden="true">
+      <img src="/icons/elbi-192.png" alt="" width="44" height="44">
+    </div>
+    <div class="install__body">
+      <strong id="installTitle"></strong>
+      <ol id="installSteps"></ol>
+    </div>
+    <div class="install__actions">
+      <button class="btn btn--primary btn--sm" id="installGo" type="button" hidden>Install</button>
+      <button class="btn btn--ghost btn--sm" id="installClose" type="button">Not now</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Who's watching ──────────────────────────────────────────────────── -->
 <div class="gate" id="profileGate" hidden>
   <div class="gate__card gate__card--wide">

@@ -62,8 +62,10 @@ as well.
 3. Open the address (e.g. `https://media-pc.tail1234.ts.net`) in Safari or Chrome.
 4. Sign in with the email and password, leaving **Remember this device** ticked.
    They will not be asked again on that phone.
-5. **iPhone:** tap Share → *Add to Home Screen*. **Android:** menu → *Install app*.
-   It then opens full screen with the Elbi icon, like any other app.
+5. **Install it.** Elbi shows the steps itself once you're signed in — Safari never
+   offers to install a web app, so it has to tell you. iPhone: Share → *Add to Home
+   Screen*. Android: it shows an **Install** button. It then opens full screen with the
+   Elbi icon, like any other app.
 
 That's it. From then on: tap the icon, pick who's watching, press play.
 
@@ -153,6 +155,27 @@ Copy the films onto its drive and your desktop stays off.
 That is the only real way to have it always available. Putting the films on a rented
 server would work too, but a library of that size costs real money every month, which is
 the thing you were trying to avoid.
+
+---
+
+## What "installing it" does and doesn't do
+
+Installing puts a real app icon on the home screen. It opens full screen with no browser
+bars, remembers the sign-in, and iOS gives an installed web app a more generous storage
+allowance — so downloaded films are less likely to be cleared. It is worth doing.
+
+**It does not put the films on the phone.** The app is the screen; the films are on your
+computer. Installed or not, watching still means either streaming from your machine or
+playing something already downloaded. There is no version of this where the app itself
+contains the library — a phone-sized app cannot hold terabytes of film, and nothing was
+copied when they installed it.
+
+So the two things are separate, and both are worth doing once:
+
+| | What it gives |
+|---|---|
+| **Install the app** | An icon, full screen, safer storage for downloads |
+| **Download a film** | That film plays with your PC off |
 
 ---
 
