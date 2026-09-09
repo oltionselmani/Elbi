@@ -177,9 +177,67 @@ function seed() {
   save();
 }
 
+/**
+ * Whether this page is allowed to play a blob: URL.
+ *
+ * Object URLs are the cheap way to hand a file to a <video>: no copy, no
+ * base64. Some sandboxes refuse the scheme outright though, and a refused
+ * source is a black screen with nothing in the console to explain it. So it is
+ * checked once, with a real video element, and if it fails everything falls
+ * back to data: URLs — three times the memory, but it plays.
+ */
+function blobMediaPlays() {
+  const key = Object.keys(MEDIA).find((name) => MEDIA[name].type.startsWith('video/'));
+  if (!key) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const probe = document.createElement('video');
+    probe.preload = 'metadata';
+    probe.muted = true;
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      probe.removeAttribute('src');
+      resolve(ok);
+    };
+    probe.addEventListener('loadedmetadata', () => finish(true));
+    // Only a refusal is a failure; a slow answer is not.
+    probe.addEventListener('error', () => finish(false));
+    setTimeout(() => finish(true), 4000);
+    probe.src = mediaUrls.get(key);
+  });
+}
+
+function dataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function useDataUrls() {
+  for (const [key, entry] of Object.entries(MEDIA)) {
+    URL.revokeObjectURL(mediaUrls.get(key));
+    mediaUrls.set(key, `data:${entry.type};base64,${entry.b64}`);
+  }
+  for (const key of [...mediaUrls.keys()].filter((k) => k.startsWith('m_'))) {
+    try {
+      const blob = await idb('readonly', (store) => store.get(key));
+      if (!blob) continue;
+      URL.revokeObjectURL(mediaUrls.get(key));
+      mediaUrls.set(key, await dataUrl(blob));
+    } catch { /* leave the object URL and hope */ }
+  }
+  dataUrlsOnly = true;
+  console.info('[elbi] blob: URLs are not allowed here; using data: URLs instead.');
+}
+
 const ready = (async () => {
   db = readStored();
   await loadMedia();
+  if (!(await blobMediaPlays())) await useDataUrls();
   if (db.seed !== SEED_VERSION) seed();
 })();
 
@@ -537,7 +595,7 @@ export const api = {
   uploadArtwork: call(async (file) => {
     const key = `m_${id('art_')}`;
     await idb('readwrite', (store) => store.put(file, key));
-    mediaUrls.set(key, URL.createObjectURL(file));
+    mediaUrls.set(key, await rememberMedia(file));
     return { url: key };
   }),
 
@@ -586,7 +644,7 @@ export const api = {
 
     const key = `m_${uploadId}`;
     await idb('readwrite', (store) => store.put(blob, key));
-    mediaUrls.set(key, URL.createObjectURL(blob));
+    mediaUrls.set(key, await rememberMedia(blob));
 
     let title = payload.titleId ? findTitle(payload.titleId) : null;
     let created = false;
@@ -766,6 +824,12 @@ export const api = {
   patch: call(() => { throw NO_SERVER('That'); }),
   del: call(() => { throw NO_SERVER('That'); }),
 };
+
+/** A URL for a newly added file, in whichever scheme this page can use. */
+let dataUrlsOnly = false;
+async function rememberMedia(blob) {
+  return dataUrlsOnly ? dataUrl(blob) : URL.createObjectURL(blob);
+}
 
 async function forgetMedia(key) {
   if (!key || !key.startsWith('m_')) return;
