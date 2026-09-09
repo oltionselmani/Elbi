@@ -269,6 +269,10 @@ export async function requestPersistence() {
 }
 
 export async function registerServiceWorker() {
+  // The hosted copy is a single page with no /sw.js behind it — and nothing for
+  // one to do, since the library is already in the browser. Asking anyway just
+  // logs a failure on every load.
+  if (window.ELBI_HOSTED) return null;
   if (!('serviceWorker' in navigator)) return null;
   if (location.protocol !== 'https:' && !['localhost', '127.0.0.1', '::1'].includes(location.hostname)) {
     // Browsers only allow service workers on https or localhost.

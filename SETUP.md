@@ -7,6 +7,13 @@ stranger to find or attack.
 
 Everything below is free and does not expire.
 
+**Before any of that**, there is a copy you can just open:
+<https://claude.ai/code/artifact/ac18e88a-bc3b-4e8b-909d-70def832aabd>. It is the whole
+app in one page, with a handful of short sample clips inside it, so you can show someone
+what it looks like without setting anything up. It is *not* your library — it cannot see
+your films, and nothing below sends them anywhere. The steps that follow are what puts
+your own films on your own phone.
+
 ---
 
 ## On the computer with the films — once

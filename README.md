@@ -25,6 +25,25 @@ set up, and no npm packages to fetch. Node 18 or newer is the only requirement.
 Drop video files into the `media/` folder (or upload them from the browser) and they show
 up in your library.
 
+### Or open it without installing anything
+
+**<https://claude.ai/code/artifact/ac18e88a-bc3b-4e8b-909d-70def832aabd>**
+
+The same app, built as a single HTML page with a few short sample clips inside it. Not a
+mock-up or a screenshot tour — it is the real code: the same player, the same profiles,
+the same subtitle handling, the same offline downloads. Pick a name, press play. You can
+even add one of your own films to it from that page; it stays in that browser and is
+never uploaded anywhere.
+
+The three things it cannot do are the three that need a machine of your own — scanning a
+folder, streaming public-domain films from the Internet Archive, and looking up posters —
+so they are left out of it rather than left to fail.
+
+```bash
+npm run build:web      # → dist/elbi.html, one file, everything inside
+npm run preview:web    # → http://127.0.0.1:4173
+```
+
 ---
 
 ## What it does
@@ -468,6 +487,11 @@ public/
   js/add.js            upload / scan / URL / metadata editing
   js/offline.js        downloads into Cache Storage
   sw.js                service worker: app shell + offline range serving
+web/
+  build.mjs            the hosted copy: one HTML file, no server
+  bundle.mjs           flattens public/js into a single script
+  api.web.js           the server, reimplemented in the browser
+  sample/make.mjs      renders the sample clips and artwork
 ```
 
 **Storage** is a single `data/library.json`, written through a temp file and renamed, so a
@@ -483,6 +507,11 @@ identically.
 **No dependencies** means no supply chain to audit, no `npm install` before it runs, and
 nothing that rots when you come back to it in two years.
 
+**The hosted copy** in `web/` is the same code, not a second implementation. `build.mjs`
+takes the real markup, the real stylesheet and the real modules, flattens them into one
+file, and swaps exactly one module — `api.js` — for a version backed by localStorage and
+IndexedDB instead of a server. Change the app and the hosted copy changes with it.
+
 ---
 
 ## Tests
@@ -491,7 +520,7 @@ nothing that rots when you come back to it in two years.
 npm test
 ```
 
-188 tests covering filename parsing, range-request edge cases, path-traversal refusal,
+199 tests covering filename parsing, range-request edge cases, path-traversal refusal,
 SRT→VTT conversion (including the single-digit hour that makes a browser discard an entire
 file), subtitle charset decoding, advert-cue stripping, subtitle-download URL containment,
 skip-intro marker validation, the resume-rewind arithmetic, search ranking and accent
@@ -506,7 +535,9 @@ Several of them exist to stop two things drifting apart rather than to test a fu
 the keyboard overlay is checked against the handler that implements it in both directions,
 and the service worker's precache list is checked against everything actually shipped in
 `public/`. Add a shortcut without documenting it, or a module without precaching it, and
-the suite fails.
+the suite fails. Eleven more cover the bundler behind the hosted build — name collisions,
+modules that import each other in a cycle, runtime imports — and one of those bundles the
+whole real app and refuses to pass if any module syntax survives.
 
 The browser side was verified against real Chromium — 37 checks covering playback,
 double-click seeking, mid-playback quality switching, live FPS measurement, subtitle
@@ -522,6 +553,13 @@ on a browse card, an Albanian track fetched from opensubtitles.org and parsed by
 into 1420 separate cues with its accents intact and its advert cue gone, the skip-intro
 button appearing only inside its marked range and jumping to the right second, and the sleep
 timer counting down, pausing playback and saving your place.
+
+The hosted build gets its own 52 browser checks — 42 on a desktop viewport and 10 on an
+iPhone — covering the whole thing end to end: the library loading out of the page itself,
+Albanian subtitles switching themselves on with exactly one track showing, mid-film
+quality switching keeping your place, Skip Intro, a film really landing in Cache Storage
+and surviving a reload, per-profile history, and adding a video file that ends up stored
+in IndexedDB and playable.
 
 ---
 

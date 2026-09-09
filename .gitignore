@@ -11,7 +11,10 @@
 # Optional drop-in for HLS playback in Chrome/Firefox
 /public/vendor/
 
-node_modules/
+# The hosted copy is generated; its sources are web/ and public/.
+/dist/
+
+node_modules
 npm-debug.log*
 .DS_Store
 Thumbs.db

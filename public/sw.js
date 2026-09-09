@@ -1,7 +1,7 @@
 /* Elbi service worker — app shell caching, offline library, and range-capable
    playback of videos saved into Cache Storage. */
 
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL_CACHE = `elbi-shell-${VERSION}`;
 const DATA_CACHE = `elbi-data-${VERSION}`;
 const VIDEO_CACHE = 'elbi-video-v1'; // unversioned: downloads must survive updates
