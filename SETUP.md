@@ -177,6 +177,12 @@ So the two things are separate, and both are worth doing once:
 | **Install the app** | An icon, full screen, safer storage for downloads |
 | **Download a film** | That film plays with your PC off |
 
+**You don't have to explain either of them.** Once someone signs in, Elbi shows a short
+**Set this device up** list on the home page with exactly those steps, each with a button
+that does it. Items tick off as they happen — installing ticks itself, saving a film ticks
+itself — and once everything is done the list disappears for good. Nobody has to remember
+a message you sent them.
+
 ---
 
 ## Why it's set up this way

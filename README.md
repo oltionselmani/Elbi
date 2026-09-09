@@ -491,7 +491,7 @@ nothing that rots when you come back to it in two years.
 npm test
 ```
 
-177 tests covering filename parsing, range-request edge cases, path-traversal refusal,
+188 tests covering filename parsing, range-request edge cases, path-traversal refusal,
 SRT→VTT conversion (including the single-digit hour that makes a browser discard an entire
 file), subtitle charset decoding, advert-cue stripping, subtitle-download URL containment,
 skip-intro marker validation, the resume-rewind arithmetic, search ranking and accent

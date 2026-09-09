@@ -140,9 +140,6 @@ async function startApp() {
   $('#app').hidden = false;
   await refresh();
   render();
-  // Offered once the library is actually on screen — an install prompt before
-  // you have seen what you are installing is just noise.
-  showInstallBanner();
 }
 
 // ---------------------------------------------------------------------------
@@ -418,10 +415,27 @@ const INSTALL_DISMISSED = 'elbi.install.dismissed';
 let deferredPrompt = null;
 
 window.addEventListener('beforeinstallprompt', (event) => {
+  // Held rather than shown. The "Set this device up" list is the one place
+  // installing is offered from — two things saying it at once, one floating
+  // over the other, is what this replaced.
   event.preventDefault();
   deferredPrompt = event;
-  showInstallBanner();
 });
+
+/** True when the browser will do the install itself, in one tap. */
+export function canPromptInstall() {
+  return Boolean(deferredPrompt);
+}
+
+/** Fire the browser's own install prompt. Resolves once the user has answered. */
+export async function promptInstall() {
+  if (!deferredPrompt) return false;
+  $('#installBanner').hidden = true;
+  deferredPrompt.prompt();
+  const choice = await deferredPrompt.userChoice.catch(() => null);
+  deferredPrompt = null;
+  return choice?.outcome === 'accepted';
+}
 
 window.addEventListener('appinstalled', () => {
   deferredPrompt = null;

@@ -1230,6 +1230,11 @@ body.is-faux-fullscreen { overflow: hidden; }
   .slowlink .upnext__card { max-width: none; min-width: 0; }
 }
 
+/* Never on top of an open sheet or the player: it is a fixed bar at the bottom
+   of the screen, which on a phone lands exactly over the buttons in a modal. */
+body.no-scroll .install,
+body.is-playing .install { display: none !important; }
+
 /* "Add to home screen". Sits at the bottom, out of the way, and explains
    itself rather than being a bare button — on iOS the steps are the whole
    point, since Safari offers nothing of its own. */
@@ -1264,4 +1269,47 @@ body.is-faux-fullscreen { overflow: hidden; }
   .install__icon { display: none; }
   .install__actions { flex-direction: row; width: 100%; }
   .install__actions .btn { flex: 1; }
+}
+
+/* "Set this device up" — the short list of things worth doing once. It removes
+   itself when they are all done, so it never becomes furniture. */
+.ready {
+  margin: 0 0 1.6rem;
+  border: 1px solid var(--edge); border-radius: var(--radius-lg);
+  background: var(--ink-raised);
+  padding: 1rem 1.1rem;
+}
+.ready__head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 1rem; margin-bottom: .7rem;
+}
+.ready__head strong {
+  font-family: var(--display); font-size: 1.15rem;
+  font-weight: 400; letter-spacing: .05em;
+}
+.ready__count {
+  font-family: var(--mono); font-size: .64rem; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--haze-dim);
+}
+.ready__list { list-style: none; margin: 0; padding: 0; display: grid; gap: .55rem; }
+.ready__item {
+  display: flex; align-items: center; gap: .75rem;
+  padding: .55rem .7rem; border-radius: 10px;
+  background: rgba(255, 255, 255, .03);
+}
+.ready__tick {
+  flex: none; width: 22px; height: 22px; border-radius: 50%;
+  border: 1.5px solid var(--edge); display: grid; place-items: center;
+  font-size: .72rem; color: var(--ink);
+}
+.ready__item.is-done { opacity: .55; }
+.ready__item.is-done .ready__tick { background: var(--good); border-color: var(--good); }
+.ready__text { flex: 1; min-width: 0; }
+.ready__text strong { display: block; font-size: .9rem; font-weight: 600; letter-spacing: 0; }
+.ready__text small { color: var(--haze); font-size: .78rem; line-height: 1.35; }
+.ready__item.is-done .ready__text strong { text-decoration: line-through; }
+
+@media (max-width: 620px) {
+  .ready__item { flex-wrap: wrap; }
+  .ready__item .btn { width: 100%; }
 }

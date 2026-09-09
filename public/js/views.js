@@ -4,6 +4,8 @@ import {
   SORTS, STATUSES, TYPES, applyView, genreCounts, defaultView, normalizeView, isDefaultView,
 } from './filters.js';
 import { typicalFilmSize, roomForFilms, describeRoom } from './capacity.js';
+import { readinessSteps, shouldShowReadiness, readinessProgress } from './readiness.js';
+import { installState, readEnv } from './install.js';
 import {
   state, playablesOf, progressFor, resumePointFor, continueWatching, allGenres, searchTitles,
   titleById, hasPlayableSource, upsertTitle, removeTitleLocal, refresh,
@@ -202,6 +204,12 @@ export function renderBrowse() {
   const featured = pickFeatured();
   if (featured) host.append(renderHero(featured));
 
+  // The two things worth doing once on a new device. Rendered async because
+  // the storage answers are promises; it inserts itself under the hero.
+  const readinessSlot = el('div');
+  host.append(readinessSlot);
+  renderReadiness(readinessSlot);
+
   const resume = continueWatching();
   if (resume.length) {
     const rewind = Number(state.settings?.resumeRewind) || 0;
@@ -373,6 +381,86 @@ function watchStatusOf(title) {
  * and TV shows shelves are — in which case the type chips are dropped, since
  * the shelf you are standing on already answers that question.
  */
+/**
+ * A short checklist of the things that make Elbi behave like an app on this
+ * device. It removes itself the moment they are all done.
+ */
+async function renderReadiness(slot) {
+  const offline = await import('./offline.js');
+  const [persistence, index] = await Promise.all([
+    offline.persistenceStatus(),
+    Promise.resolve(offline.offlineIndex()),
+  ]);
+  const install = installState(readEnv(false));
+
+  const steps = readinessSteps({
+    installed: install.installed,
+    installMethod: install.method,
+    persistSupported: persistence.supported,
+    persisted: persistence.persisted,
+    downloadCount: Object.keys(index).length,
+    libraryCount: state.titles.length,
+  });
+  if (!shouldShowReadiness(steps)) return;
+
+  const { done, total } = readinessProgress(steps);
+  const card = el('section.ready', {}, [
+    el('div.ready__head', {}, [
+      el('strong', { text: 'Set this device up' }),
+      el('span.ready__count', { text: `${done} of ${total}` }),
+    ]),
+    el('ul.ready__list', {}, steps.map((step) => el(`li.ready__item${step.done ? '.is-done' : ''}`, {}, [
+      el('span.ready__tick', { text: step.done ? '✓' : '', 'aria-hidden': 'true' }),
+      el('div.ready__text', {}, [
+        el('strong', { text: step.label }),
+        el('small', { text: step.hint }),
+      ]),
+      step.done ? null : el('button.btn.btn--sm.btn--primary', {
+        type: 'button',
+        onclick: () => runReadinessAction(step.action, slot),
+      }, [step.action === 'download' ? 'Show me how' : 'Do it']),
+    ].filter(Boolean)))),
+  ]);
+  clear(slot).append(card);
+}
+
+async function runReadinessAction(action, slot) {
+  if (action === 'install') {
+    const app = await import('./app.js');
+    // One tap where the browser supports it; the steps where it does not.
+    if (app.canPromptInstall()) {
+      const accepted = await app.promptInstall();
+      if (accepted) toast('Installed. Look for Elbi on your home screen.', 'ok');
+      renderReadiness(slot);
+      return;
+    }
+    app.openInstallHelp();
+    return;
+  }
+  if (action === 'protect') {
+    const offline = await import('./offline.js');
+    const granted = await offline.requestPersistence();
+    toast(
+      granted
+        ? 'Protected — your downloads will not be cleared.'
+        : 'The browser declined. Adding Elbi to your home screen usually persuades it.',
+      granted ? 'ok' : 'err',
+    );
+    renderReadiness(slot);
+    return;
+  }
+  if (action === 'download') {
+    // Open something worth saving rather than explaining where the button is.
+    const candidate = state.titles.find((t) => hasPlayableSource(t));
+    if (candidate) {
+      toast('Use the ↓ button next to a video file to save it.', 'info');
+      openDetail(candidate.id);
+    } else {
+      toast('Add a film to your library first.', 'info');
+    }
+  }
+}
+
 export function renderLibrary({ only = null, heading = 'My library' } = {}) {
   const host = clear(view());
   const pool = only
