@@ -46,12 +46,13 @@ npm run preview:web    # → http://127.0.0.1:4173
 
 ### Installing it on a PC
 
-**Windows: [download Install-Elbi.cmd](https://github.com/oltionselmani/Elbi/raw/HEAD/Install-Elbi.cmd) and double-click it.** Nothing to
-type, nothing to install first, no administrator rights. It fetches Elbi,
-fetches its own private copy of Node if the PC hasn't got one, sets it to start
-at sign-in, and puts an icon on the desktop. Windows may ask whether to keep a
-file it doesn't recognise — it is a text file, and you can read every line of it
-before running it.
+**Windows: [open Install-Elbi.cmd](https://github.com/oltionselmani/Elbi/blob/HEAD/Install-Elbi.cmd), press the download button above the
+file, and double-click what lands in Downloads.** Nothing to type, nothing to
+install first, no administrator rights. It fetches Elbi, fetches its own private
+copy of Node if the PC hasn't got one, sets it to start at sign-in, and puts an
+icon on the desktop. Windows may ask whether to keep a file it doesn't
+recognise — it is a text file, and the page you downloaded it from shows you
+every line of it.
 
 There is no `.exe`. Elbi is a web app, so installing it means two things, and
 the same script does the first and sets up the second. If you already have the

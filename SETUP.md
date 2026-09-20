@@ -21,7 +21,9 @@ your own films on your own phone.
 If all you want is Elbi on the PC that holds the films — no phones, no network —
 then on Windows there is nothing to type at all:
 
-**[Download Install-Elbi.cmd](https://github.com/oltionselmani/Elbi/raw/HEAD/Install-Elbi.cmd) and double-click it.**
+**[Open Install-Elbi.cmd](https://github.com/oltionselmani/Elbi/blob/HEAD/Install-Elbi.cmd)**, press the download button just above the file
+(an arrow into a tray, top right), and double-click what lands in your Downloads
+folder.
 
 It fetches Elbi, fetches its own copy of Node if this PC hasn't got one, and
 sets everything up. No administrator rights: it all lands in your own AppData
