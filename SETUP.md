@@ -16,6 +16,24 @@ your own films on your own phone.
 
 ---
 
+## Just on this computer, nothing else
+
+If all you want is Elbi on the PC that holds the films — no phones, no network —
+that is one command and no Tailscale:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-windows.ps1
+```
+
+It starts Elbi whenever you sign in, puts an icon on the desktop, and opens the
+page ready for Chrome's or Edge's **Install** button, which is what turns it into
+a proper app window with the Elbi icon in your Start menu. There is no `.exe`;
+this is what installing a web app looks like.
+
+Everything below is for reaching it from a phone as well.
+
+---
+
 ## On the computer with the films — once
 
 **1. Install Tailscale and sign in**

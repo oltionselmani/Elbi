@@ -44,6 +44,26 @@ npm run build:web      # → dist/elbi.html, one file, everything inside
 npm run preview:web    # → http://127.0.0.1:4173
 ```
 
+### Installing it on a PC
+
+There is no `.exe`. Elbi is a web app, so installing it means two things:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-windows.ps1
+```
+
+That does the first — a scheduled task starts the server whenever you sign in,
+so the icon always works — and then opens the page for the second: **the Install
+button in Chrome's or Edge's address bar**. Press it and Elbi lands in the Start
+menu with its own icon, opens in its own window with no browser bars, and can be
+pinned to the taskbar. It is a real installed app at that point, just not one
+that arrived as an installer.
+
+The same Install button works on macOS and Linux in Chrome, Edge or Brave; for
+starting at boot there, `scripts/tailscale-setup.sh` sets up a launchd or systemd
+unit. Safari cannot install web apps on a Mac, but it can on an iPhone — Share →
+*Add to Home Screen*.
+
 ---
 
 ## What it does

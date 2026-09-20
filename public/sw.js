@@ -1,7 +1,7 @@
 /* Elbi service worker — app shell caching, offline library, and range-capable
    playback of videos saved into Cache Storage. */
 
-const VERSION = 'v3';
+const VERSION = 'v4';
 const SHELL_CACHE = `elbi-shell-${VERSION}`;
 const DATA_CACHE = `elbi-data-${VERSION}`;
 const VIDEO_CACHE = 'elbi-video-v1'; // unversioned: downloads must survive updates
@@ -39,9 +39,10 @@ const SHELL_ASSETS = [
   '/js/add.js',
   '/js/offline.js',
   '/manifest.webmanifest',
-  '/icons/elbi.svg',
+  '/icons/elbi-32.png',
   '/icons/elbi-192.png',
   '/icons/elbi-512.png',
+  '/icons/elbi-maskable-512.png',
   '/fonts/bebas-neue-400.woff2',
   '/fonts/plex-sans-400.woff2',
   '/fonts/plex-sans-500.woff2',

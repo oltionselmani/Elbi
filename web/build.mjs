@@ -119,6 +119,7 @@ function manifestSetup() {
   manifest.icons = [
     { src: `data:image/png;base64,${b64(PUBLIC, 'icons', 'elbi-192.png')}`, sizes: '192x192', type: 'image/png', purpose: 'any' },
     { src: `data:image/png;base64,${b64(PUBLIC, 'icons', 'elbi-512.png')}`, sizes: '512x512', type: 'image/png', purpose: 'any' },
+    { src: `data:image/png;base64,${b64(PUBLIC, 'icons', 'elbi-maskable-512.png')}`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
   ];
   // A manifest link only counts in the head, and the page is delivered as a
   // fragment, so it is put there on the way past.
