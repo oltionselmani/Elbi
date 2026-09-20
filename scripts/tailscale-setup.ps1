@@ -70,38 +70,20 @@ foreach ($name in 'ELBI_MEDIA_DIR','ELBI_SCAN_DIRS','ELBI_TMDB_KEY') {
   if ($value) { $envPairs += "$name=$value" }
 }
 
-# Task Scheduler has no environment block, so a tiny launcher sets the
-# variables and then starts Elbi.
-$launcher = Join-Path $ElbiDir 'scripts\start-elbi.cmd'
-$lines = @('@echo off')
-foreach ($pair in $envPairs) { $lines += "set $pair" }
-$lines += "cd /d `"$ElbiDir`""
-$lines += "`"$($node.Source)`" `"$ElbiDir\server.js`""
-Set-Content -Path $launcher -Value $lines -Encoding ASCII
-Info "Launcher written to $launcher"
-
-$action   = New-ScheduledTaskAction -Execute $launcher
-$trigger  = New-ScheduledTaskTrigger -AtLogOn
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
-              -DontStopIfGoingOnBatteries -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
-
-Unregister-ScheduledTask -TaskName 'Elbi' -Confirm:$false -ErrorAction SilentlyContinue
-Register-ScheduledTask -TaskName 'Elbi' -Action $action -Trigger $trigger `
-  -Settings $settings -Description 'Elbi media server' | Out-Null
-Start-ScheduledTask -TaskName 'Elbi'
-Info 'Scheduled task "Elbi" installed and started (runs at every sign-in).'
+# A shortcut in the Startup folder, not a scheduled task: registering a task
+# needs administrator rights, and none of this does.
+. (Join-Path $PSScriptRoot 'win-autostart.ps1')
+$autostart = Install-ElbiAutostart -ElbiDir $ElbiDir -NodePath $node.Source -EnvPairs $envPairs
+Info "Launcher: $($autostart.Launcher)"
+Info "Starts at every sign-in via $($autostart.Startup)"
 
 # ---------------------------------------------------------------------------
 Say '4. Publishing it on your tailnet'
 
-$up = $false
-foreach ($i in 1..30) {
-  try {
-    Invoke-WebRequest -Uri "http://127.0.0.1:$Port/api/auth/status" -UseBasicParsing -TimeoutSec 2 | Out-Null
-    $up = $true; break
-  } catch { Start-Sleep -Seconds 1 }
+if (-not (Start-ElbiNow -Hidden $autostart.Hidden -Port $Port)) {
+  Info "Run this by hand to see what it says:  $($autostart.Launcher)"
+  Die  "Elbi did not come up on port $Port."
 }
-if (-not $up) { Die "Elbi did not come up on port $Port. Check the task in Task Scheduler." }
 Info "Elbi is answering on 127.0.0.1:$Port."
 
 & $ts serve --bg "http://127.0.0.1:$Port"

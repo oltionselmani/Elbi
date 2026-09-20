@@ -11,9 +11,8 @@ rem
 rem  It uses only what Windows already ships with - curl and tar, both present
 rem  since Windows 10 1803 - so there is nothing to install first.
 rem
-rem  NOTE: this has not been run on a Windows machine; there was none to test
-rem  on. If it stops, the message tells you where, and the manual route is in
-rem  SETUP.md.
+rem  Downloading and unpacking are known to work on Windows 11. If it stops,
+rem  the message says which step, and SETUP.md has the manual route.
 rem ===========================================================================
 
 setlocal enableextensions

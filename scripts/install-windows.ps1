@@ -11,12 +11,15 @@
 # things, and this script does the first and sets up the second:
 #
 #   1. The server starts by itself when you sign in, so the icon always works.
+#      (a shortcut in your Startup folder - no administrator rights needed)
 #   2. Chrome or Edge puts it in your Start menu as a real app window, with the
 #      Elbi icon and no browser bars. That is the Install button in the address
 #      bar, and the script opens the page ready for it.
 #
-# NOTE: this has not been run end to end — no Windows machine was available to
-# test it on. Read it before running it, and tell me what breaks.
+# Run on a real Windows 11 machine. The first version registered a scheduled
+# task and failed there with 0x80070005, access denied: that needs
+# administrator rights, and nothing here is worth a UAC prompt for. It uses the
+# Startup folder now, which is the per-user equivalent and asks for nothing.
 
 $ErrorActionPreference = 'Stop'
 
@@ -53,75 +56,54 @@ Info "Node $version at $($node.Source)"
 Say '2. Where your films are'
 
 $mediaDir = [Environment]::GetEnvironmentVariable('ELBI_MEDIA_DIR')
-if ($mediaDir) {
-  if (-not (Test-Path $mediaDir)) { Warn "ELBI_MEDIA_DIR is set to $mediaDir, which does not exist yet." }
-  else { Info "Films: $mediaDir" }
-} else {
-  Info "No ELBI_MEDIA_DIR set, so Elbi will use $ElbiDir\media"
-  Info 'To point it at a drive instead, close this window and run:'
-  Info '  $env:ELBI_MEDIA_DIR="D:\Films" ; powershell -ExecutionPolicy Bypass -File scripts\install-windows.ps1'
+if (-not $mediaDir) {
+  Info 'Type or paste the folder your films are in, then press Enter.'
+  Info "Leave it empty to use $ElbiDir\media and add films from the browser."
+  $answer = (Read-Host '  Folder').Trim().Trim('"')
+  if ($answer) { $mediaDir = $answer }
 }
+
+if ($mediaDir) {
+  if (-not (Test-Path $mediaDir)) {
+    Warn "$mediaDir does not exist, so Elbi will use its own folder instead."
+    Info 'Run this file again once the drive is plugged in, and give the folder then.'
+    $mediaDir = $null
+  } else {
+    Info "Films: $mediaDir"
+  }
+}
+if (-not $mediaDir) { Info "Films: $ElbiDir\media" }
 
 # ---------------------------------------------------------------------------
 Say '3. Starting Elbi whenever you sign in'
 #
 # ELBI_HOST=127.0.0.1 keeps it on this machine only: not on your home wifi, and
 # certainly not on the internet. No password is needed for that, though you can
-# still set one with `npm run set-login` — and you must, before publishing it
+# still set one with `node scripts\set-login.js` - and you must, before publishing it
 # anywhere.
 
 $envPairs = @(
   'ELBI_HOST=127.0.0.1'
   "ELBI_PORT=$Port"
 )
-foreach ($name in 'ELBI_MEDIA_DIR','ELBI_SCAN_DIRS','ELBI_TMDB_KEY') {
+if ($mediaDir) { $envPairs += "ELBI_MEDIA_DIR=$mediaDir" }
+foreach ($name in 'ELBI_SCAN_DIRS','ELBI_TMDB_KEY') {
   $value = [Environment]::GetEnvironmentVariable($name)
   if ($value) { $envPairs += "$name=$value" }
 }
 
-# Task Scheduler has no environment block, so a small launcher sets the
-# variables and then starts Elbi. Both setup scripts write this same file: the
-# last one you run is the setup you have.
-$launcher = Join-Path $ElbiDir 'scripts\start-elbi.cmd'
-$lines = @('@echo off')
-foreach ($pair in $envPairs) { $lines += "set $pair" }
-$lines += "cd /d `"$ElbiDir`""
-$lines += "`"$($node.Source)`" `"$ElbiDir\server.js`""
-Set-Content -Path $launcher -Value $lines -Encoding ASCII
-Info "Launcher written to $launcher"
-
-# Task Scheduler runs a .cmd in a visible console window, which would leave a
-# black box in the taskbar for as long as Elbi is running — and the first thing
-# anyone does with that is close it, killing the server. wscript starts the
-# same launcher with the window hidden.
-$hidden = Join-Path $ElbiDir 'scripts\start-elbi.vbs'
-@"
-Set sh = CreateObject("WScript.Shell")
-sh.Run """$launcher""", 0, False
-"@ | Set-Content -Path $hidden -Encoding ASCII
-
-$action   = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument "`"$hidden`""
-$trigger  = New-ScheduledTaskTrigger -AtLogOn
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
-              -DontStopIfGoingOnBatteries -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
-
-Unregister-ScheduledTask -TaskName 'Elbi' -Confirm:$false -ErrorAction SilentlyContinue
-Register-ScheduledTask -TaskName 'Elbi' -Action $action -Trigger $trigger `
-  -Settings $settings -Description 'Elbi media server' | Out-Null
-Start-ScheduledTask -TaskName 'Elbi'
-Info 'Scheduled task "Elbi" installed and started.'
+. (Join-Path $PSScriptRoot 'win-autostart.ps1')
+$autostart = Install-ElbiAutostart -ElbiDir $ElbiDir -NodePath $node.Source -EnvPairs $envPairs
+Info "Launcher: $($autostart.Launcher)"
+Info "Startup shortcut: $($autostart.Startup)"
 
 # ---------------------------------------------------------------------------
-Say '4. Waiting for it to come up'
+Say '4. Starting it'
 
-$up = $false
-foreach ($i in 1..30) {
-  try {
-    Invoke-WebRequest -Uri "http://127.0.0.1:$Port/api/auth/status" -UseBasicParsing -TimeoutSec 2 | Out-Null
-    $up = $true; break
-  } catch { Start-Sleep -Seconds 1 }
+if (-not (Start-ElbiNow -Hidden $autostart.Hidden -Port $Port)) {
+  Info "Run this by hand to see what it says:  $($autostart.Launcher)"
+  Die  "Elbi did not answer on port $Port."
 }
-if (-not $up) { Die "Elbi did not answer on port $Port. Open Task Scheduler and look at the task named Elbi." }
 Info "Elbi is answering on 127.0.0.1:$Port."
 
 # ---------------------------------------------------------------------------
@@ -187,14 +169,14 @@ if ($browser) { Start-Process $browser $Url } else { Start-Process $Url }
 
   Later:
     node scripts\set-login.js                set or change the password
-    Task Scheduler -> Elbi                   stop it starting at sign-in
+    shell:startup (in the Run box)           the shortcut that starts it
     scripts\tailscale-setup.ps1              also reach it from your phone
 
   To undo everything this script did:
-    Unregister-ScheduledTask -TaskName Elbi -Confirm:`$false
+    Remove-Item "$($autostart.Startup)"
     Remove-Item "$($targets[0])", "$($targets[1])"
 
   To see what it is doing when something goes wrong, run the launcher by
-  hand — the task runs exactly this, only with the window hidden:
-    $launcher
+  hand - it is exactly what starts at sign-in, only with the window showing:
+    $($autostart.Launcher)
 "@ | Write-Host
