@@ -665,6 +665,14 @@ function detailContent(title, focusEpisodeId = null) {
             refreshDetail(title.id);
           },
         }, ['Clear progress']) : null,
+        // Removing something used to live at the bottom of the right-hand
+        // column, past the cast list — which on a phone is a long scroll for
+        // something people look for straight away.
+        el('button.btn.btn--ghost', {
+          type: 'button',
+          title: `Remove “${title.name}” from the library`,
+          onclick: () => confirmDelete(title),
+        }, ['🗑 Remove']),
       ]),
     ]),
   ]);
@@ -708,11 +716,14 @@ function detailContent(title, focusEpisodeId = null) {
       })]) : null,
     ]),
     el('div.stack', { style: { marginTop: '1rem' } }, [
-      el('button.btn.btn--ghost.btn--sm', {
+      // Both of these fetch from the internet through the server. The
+      // single-file copy has none, so they are left out rather than left to
+      // fail when tapped.
+      state.server.hosted ? null : el('button.btn.btn--ghost.btn--sm', {
         type: 'button',
         onclick: () => openMatchPicker(title),
       }, [title.poster ? 'Re-match poster & details' : 'Find poster & details']),
-      el('button.btn.btn--ghost.btn--sm', {
+      state.server.hosted ? null : el('button.btn.btn--ghost.btn--sm', {
         type: 'button',
         onclick: () => openSubtitleSearch(title, first || list[0]),
       }, ['Find subtitles online']),
@@ -732,10 +743,6 @@ function detailContent(title, focusEpisodeId = null) {
         type: 'button',
         onclick: async () => (await import('./add.js')).openSubtitleForm(title),
       }, ['Add subtitles']),
-      el('button.btn.btn--danger.btn--sm', {
-        type: 'button',
-        onclick: () => confirmDelete(title),
-      }, ['Remove from library']),
     ]),
   ]);
 
@@ -807,7 +814,10 @@ function sourceRow(title, item, source) {
       type: 'button',
       onclick: () => { closeDetail(); play({ title, item, sourceId: source.id }); },
     }, ['Play']),
-    source.kind === 'file' ? el('a.iconbtn', {
+    // Saving the file itself needs a server to serve it, and the viewer of a
+    // single-file copy cannot start a download anyway — two near-identical
+    // arrows where one does nothing is worse than one arrow.
+    source.kind === 'file' && !state.server.hosted ? el('a.iconbtn', {
       href: streamUrl(title.id, source.id, { download: true }),
       download: '',
       title: 'Save this file to your device',
@@ -968,13 +978,18 @@ function episodeSection(title) {
 }
 
 function confirmDelete(title) {
-  const hasUploads = playablesOf(title).some((p) => p.sources.some((s) => s.kind === 'file'));
+  const hosted = Boolean(state.server.hosted);
+  const hasUploads = !hosted && playablesOf(title).some((p) => p.sources.some((s) => s.kind === 'file'));
   const body = clear($('#sheetBody'));
   let deleteFiles = false;
 
   body.append(el('div', {}, [
     el('h2', { text: `Remove “${title.name}”?` }),
-    el('p.muted', { text: 'This removes the title from your library. Files that Elbi did not upload are never touched.' }),
+    el('p.muted', {
+      text: hosted
+        ? 'This removes the title from this browser. Nothing on any of your own machines is touched.'
+        : 'This removes the title from your library. Files that Elbi did not upload are never touched.',
+    }),
     hasUploads ? el('label.checkline', {}, [
       el('input', { type: 'checkbox', onchange: (e) => { deleteFiles = e.target.checked; } }),
       el('span', { text: 'Also delete the uploaded video files from disk' }),

@@ -112,6 +112,9 @@ function handleLibrary(req, res, url, method) {
     myList: db.myList[profileId] || [],
     activeProfile: profileId,
     server: {
+      // False here, true in the single-file copy that has no server behind it:
+      // the client hides the few actions that need one.
+      hosted: false,
       authRequired: authRequired(),
       allowRemote: config.allowRemote,
       metadataProvider: metadata.providerName(),
