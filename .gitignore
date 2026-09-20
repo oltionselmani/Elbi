@@ -8,6 +8,10 @@
 /media/*
 !/media/.gitkeep
 
+# Written by the Windows setup scripts, and full of paths from that machine.
+/scripts/start-elbi.cmd
+/scripts/start-elbi.vbs
+
 # Optional drop-in for HLS playback in Chrome/Firefox
 /public/vendor/
 

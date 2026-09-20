@@ -81,7 +81,17 @@ $lines += "`"$($node.Source)`" `"$ElbiDir\server.js`""
 Set-Content -Path $launcher -Value $lines -Encoding ASCII
 Info "Launcher written to $launcher"
 
-$action   = New-ScheduledTaskAction -Execute $launcher
+# Task Scheduler runs a .cmd in a visible console window, which would leave a
+# black box in the taskbar for as long as Elbi is running — and the first thing
+# anyone does with that is close it, killing the server. wscript starts the
+# same launcher with the window hidden.
+$hidden = Join-Path $ElbiDir 'scripts\start-elbi.vbs'
+@"
+Set sh = CreateObject("WScript.Shell")
+sh.Run """$launcher""", 0, False
+"@ | Set-Content -Path $hidden -Encoding ASCII
+
+$action   = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument "`"$hidden`""
 $trigger  = New-ScheduledTaskTrigger -AtLogOn
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
               -DontStopIfGoingOnBatteries -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
@@ -137,7 +147,7 @@ foreach ($target in $targets) {
     $link.TargetPath = $Url
   }
   $link.WorkingDirectory = $ElbiDir
-  if (Test-Path $icon) { $link.IconLocation = $icon }
+  if (Test-Path $icon) { $link.IconLocation = "$icon,0" }
   $link.Description = 'Elbi — your own streaming library'
   $link.Save()
   Info "Shortcut: $target"
@@ -174,4 +184,8 @@ if ($browser) { Start-Process $browser $Url } else { Start-Process $Url }
   To undo everything this script did:
     Unregister-ScheduledTask -TaskName Elbi -Confirm:`$false
     Remove-Item "$($targets[0])", "$($targets[1])"
+
+  To see what it is doing when something goes wrong, run the launcher by
+  hand — the task runs exactly this, only with the window hidden:
+    $launcher
 "@ | Write-Host
