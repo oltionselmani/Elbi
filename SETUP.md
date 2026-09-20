@@ -19,7 +19,13 @@ your own films on your own phone.
 ## Just on this computer, nothing else
 
 If all you want is Elbi on the PC that holds the films — no phones, no network —
-that is one command and no Tailscale:
+then on Windows there is nothing to type at all:
+
+**[Download Install-Elbi.cmd](https://github.com/oltionselmani/Elbi/raw/HEAD/Install-Elbi.cmd) and double-click it.**
+
+It fetches Elbi, fetches its own copy of Node if this PC hasn't got one, and
+sets everything up. No administrator rights: it all lands in your own AppData
+folder. If you already have the files, the same setup on its own is:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install-windows.ps1

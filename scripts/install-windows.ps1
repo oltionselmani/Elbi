@@ -33,6 +33,15 @@ function Die  ($m) { Write-Host "`n  $m`n" -ForegroundColor Red; exit 1 }
 Say '1. Checking Node.js'
 
 $node = Get-Command node -ErrorAction SilentlyContinue
+
+# Install-Elbi.cmd puts a private copy here when the PC has none of its own,
+# so nothing has to be installed system-wide and no admin rights are needed.
+$bundled = Join-Path $ElbiDir 'node\node.exe'
+if (-not $node -and (Test-Path $bundled)) {
+  $node = [pscustomobject]@{ Source = $bundled }
+  Info 'Using the copy of Node that came with Elbi.'
+}
+
 if (-not $node) {
   Info 'Node.js is not installed. Get the LTS installer from https://nodejs.org'
   Die  'Install Node.js, then run this script again.'
@@ -177,7 +186,7 @@ if ($browser) { Start-Process $browser $Url } else { Start-Process $Url }
   window with no browser bars, and lets you pin it to the taskbar.
 
   Later:
-    npm run set-login                        set or change the password
+    node scripts\set-login.js                set or change the password
     Task Scheduler -> Elbi                   stop it starting at sign-in
     scripts\tailscale-setup.ps1              also reach it from your phone
 
